@@ -1,0 +1,24 @@
+// Aprism Packaging - Gradle plugin for .aje/.abe pack assembly
+// Consumes shadowJar/remapJar output and produces Aprism pack formats
+
+plugins {
+    id 'java-gradle-plugin'
+}
+
+dependencies {
+    implementation gradleApi()
+    implementation project(':aprism-api')
+    implementation project(':aprism-manifest')
+    implementation libs.gson
+
+    testImplementation libs.bundles.testing
+}
+
+gradlePlugin {
+    plugins {
+        aprismPackaging {
+            id = 'com.aprism.packaging'
+            implementationClass = 'com.aprism.packaging.AprismPackagingPlugin'
+        }
+    }
+}

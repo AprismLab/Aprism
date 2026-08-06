@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven { url = 'https://maven.fabricmc.net' }
+        maven { url = 'https://maven.neoforged.net/releases' }
+        maven { url = 'https://maven.architectury.dev/' }
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        maven { url = 'https://maven.fabricmc.net' }
+        maven { url = 'https://maven.neoforged.net/releases' }
+        maven { url = 'https://maven.architectury.dev/' }
+    }
+}
+
+rootProject.name = 'Aprism'
+
+include ':aprism-api'
+include ':aprism-manifest'
+include ':aprism-loader-core'
+include ':aprism-packaging'

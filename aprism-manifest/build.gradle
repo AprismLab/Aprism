@@ -1,0 +1,9 @@
+// Aprism Manifest - Manifest parser and validator
+// Parses aprism.manifest.json with fallback to fabric.mod.json, mods.toml, litemod.json
+
+dependencies {
+    api project(':aprism-api')
+    api libs.gson
+
+    testImplementation libs.bundles.testing
+}

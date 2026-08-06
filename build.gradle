@@ -1,0 +1,36 @@
+// Aprism Loader - Root Build Script
+// Version: v26.0-Alpha1-Phase0
+// Author: BlockConnect@StarsailsClover
+
+plugins {
+    id 'java-library' apply false
+}
+
+// Apply common conventions to all subprojects
+subprojects {
+    apply plugin: 'java-library'
+
+    group = project.aprismGroup
+    version = project.aprismVersion
+
+    // JDK 25 for 26.1+ profile
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(project.javaVersion as int)
+        }
+    }
+
+    // Compiler settings
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = project.javaVersion as int
+        options.deprecation = true
+    }
+
+    // Test settings
+    tasks.named('test') {
+        useJUnitPlatform()
+    }
+
+    // Repositories inherited from settings.gradle dependencyResolutionManagement
+}

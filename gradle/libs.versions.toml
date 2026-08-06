@@ -1,0 +1,61 @@
+# Aprism Loader - Version Catalog
+# Central version definitions for all dependencies and plugins
+# Author: BlockConnect@StarsailsClover
+
+[versions]
+# Aprism (public: v<Year>.<aprism>-<stability>.<subVer>)
+aprism = "v26.0-Alpha.1"
+
+# Minecraft / Mappings
+minecraft = "1.21.4"
+
+# JE Mod Loaders (compatibility targets)
+fabric-loader = "0.16.14"
+fabric-api = "0.119.0+1.21.4"
+neoforge = "21.4.0-beta"
+quilt-loader = "0.29.2"
+
+# Build Tools
+architectury-loom = "1.10-alpha.8"
+shadow = "9.0.0-beta12"
+
+# Mixin
+mixin = "0.15.7+mixin.0.8.7"
+asm = "9.9"
+
+# JSON / TOML
+gson = "2.13.1"
+
+# Testing
+junit = "5.13.4"
+assertj = "3.27.4"
+
+# Logging
+slf4j = "2.0.17"
+logback = "1.5.18"
+
+[libraries]
+# Mixin / ASM
+mixin = { module = "net.fabricmc:sponge-mixin", version.ref = "mixin" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
+
+# JSON
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+
+# Logging
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# Testing
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+
+[bundles]
+asm = ["asm", "asm-tree", "asm-commons"]
+testing = ["junit-jupiter", "assertj-core"]

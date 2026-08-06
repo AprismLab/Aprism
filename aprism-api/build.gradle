@@ -1,0 +1,9 @@
+// Aprism API - Unified mod API surface
+// No dependencies on specific loaders; defines the contract all mods implement.
+
+dependencies {
+    api libs.gson
+    api libs.slf4j.api
+
+    testImplementation libs.bundles.testing
+}

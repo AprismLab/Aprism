@@ -1,0 +1,28 @@
+// Aprism Loader Core - javaagent + ClassFileTransformer + classloader
+// The JE Aprism Native foundation
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    api project(':aprism-api')
+    api project(':aprism-manifest')
+    api libs.mixin
+    api libs.bundles.asm
+
+    testImplementation libs.bundles.testing
+}
+
+// The loader core is packaged as a javaagent jar
+jar {
+    manifest {
+        attributes(
+            'Premain-Class': 'com.aprism.loader.AprismAgent',
+            'Agent-Class': 'com.aprism.loader.AprismAgent',
+            'Can-Redefine-Classes': 'true',
+            'Can-Retransform-Classes': 'true',
+            'Implementation-Version': project.version
+        )
+    }
+}
