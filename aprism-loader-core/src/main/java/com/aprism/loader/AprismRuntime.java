@@ -1,5 +1,6 @@
 package com.aprism.loader;
 
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -11,12 +12,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Logger;
 
-import com.aprism.api.AprismEvent;
+import com.aprism.api.AprismContext;
 import com.aprism.api.AprismEventBus;
-import com.aprism.api.AprismEventListener;
 import com.aprism.api.AprismPhase;
 import com.aprism.api.AprismRegistry;
+import com.aprism.api.IAprismMod;
 import com.aprism.api.ModContainer;
+import com.aprism.manifest.AprismManifest;
+import com.aprism.manifest.DependencyResolutionException;
+import com.aprism.manifest.DependencyResolver;
 
 /**
  * Singleton runtime that orchestrates the Aprism mod loading lifecycle. Holds
@@ -30,10 +34,17 @@ import com.aprism.api.ModContainer;
  *       loader-support capabilities (which declare per-loader mod folders).</li>
  *   <li><b>Mod phase</b>: scan {@code mods/} (Aprism native) plus every
  *       registered loader folder ({@code fabric-mods/}, {@code neoforge-mods/},
- *       ...), parse manifests, add jars to the shared class space.</li>
+ *       ...), parse manifests, resolve dependencies in topological order, add
+ *       jars to the shared class space.</li>
  * </ol>
  * Extensions must complete before mods are scanned, because the set of mod
  * folders to scan depends on which loader-support extensions are present.
+ *
+ * <p>After loading, mods are driven through the lifecycle phases
+ * ({@link AprismPhase#PREINIT} -> {@link AprismPhase#INIT} ->
+ * {@link AprismPhase#SETUP} -> {@link AprismPhase#COMPLETE} ->
+ * {@link AprismPhase#CLIENT}/{@link AprismPhase#SERVER}) by
+ * {@link #invokeEntrypoints(AprismPhase)}.
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -45,8 +56,8 @@ public final class AprismRuntime {
     private AprismClassLoader classLoader;
     private AprismEventBus eventBus;
     private AprismRegistry registry;
-    private final Map<String, ModContainer> mods = new LinkedHashMap<>();
-    private final Map<String, String> modLoaderKeys = new HashMap<>();
+    private EntryPointInvoker entryPointInvoker;
+    private final Map<String, LoadedModContainer> mods = new LinkedHashMap<>();
     private Instrumentation instrumentation;
 
     private String aprismVersion;
@@ -82,9 +93,12 @@ public final class AprismRuntime {
         this.mcVersion = mcVersion;
         AprismClassTransformer transformer = new AprismClassTransformer();
         this.classLoader = new AprismClassLoader(getClass().getClassLoader(), transformer);
-        this.eventBus = new SimpleEventBus();
+        this.eventBus = new AprismEventBusImpl();
         this.registry = new SimpleRegistry();
+        this.entryPointInvoker = new EntryPointInvoker(classLoader);
         this.extensionLoader = new ExtensionLoader(aprismVersion, mcEdit, mcVersion);
+        this.mods.clear();
+        this.loadedExtensions.clear();
     }
 
     /**
@@ -118,18 +132,25 @@ public final class AprismRuntime {
     }
 
     /**
-     * Phase 2: scans mod folders and adds every discovered mod jar to the
-     * shared class space. Scans the Aprism native {@code mods/} folder plus
-     * every loader folder registered by loader-support extensions in phase 1.
+     * Phase 2: scans mod folders, resolves dependencies in topological order,
+     * and adds every discovered mod jar to the shared class space. Scans the
+     * Aprism native {@code mods/} folder plus every loader folder registered
+     * by loader-support extensions in phase 1.
      *
      * <p>If phase 1 has not run, only {@code mods/} is scanned (Aprism native
      * only). This is the correct behavior for instances without any loader
      * extensions installed.
      *
+     * <p>Mods are loaded in dependency order: a mod's dependencies are always
+     * added to the classloader before it. Missing dependencies, version
+     * conflicts, and dependency cycles abort the load with
+     * {@link DependencyResolutionException}.
+     *
      * @param gameRoot the game instance root (contains {@code mods/},
      *                 {@code fabric-mods/}, etc.)
+     * @throws DependencyResolutionException if dependencies cannot be resolved
      */
-    public void loadMods(Path gameRoot) {
+    public void loadMods(Path gameRoot) throws DependencyResolutionException {
         ensureInitialized();
         Map<String, String> loaderFolders = extensionLoader != null
                 ? extensionLoader.getLoaderFolders()
@@ -138,15 +159,29 @@ public final class AprismRuntime {
         ModDiscoverer discoverer = new ModDiscoverer();
         List<ModDiscoverer.DiscoveredMod> discovered = discoverer.discoverAll(gameRoot, loaderFolders);
 
-        mods.clear();
-        modLoaderKeys.clear();
+        // Index discovered mods by id for lookup after dependency sort
+        Map<String, ModDiscoverer.DiscoveredMod> discoveredById = new LinkedHashMap<>();
         for (ModDiscoverer.DiscoveredMod dm : discovered) {
-            classLoader.addModJar(dm.path());
-            ModContainer container = new SimpleModContainer(dm);
-            mods.put(container.getId(), container);
-            modLoaderKeys.put(container.getId(), dm.loaderKey());
+            discoveredById.put(dm.manifest().id(), dm);
         }
-        LOG.info("Loaded " + mods.size() + " mod(s) across " + loaderFolders.size() + 1 + " folder(s)");
+
+        // Resolve dependencies: validates versions, detects cycles, returns ids in load order
+        DependencyResolver resolver = new DependencyResolver();
+        List<ModContainer> ordered = resolver.resolve(
+                discovered.stream().map(ModDiscoverer.DiscoveredMod::manifest).toList());
+
+        // Register to classloader in dependency order
+        mods.clear();
+        for (ModContainer mc : ordered) {
+            ModDiscoverer.DiscoveredMod dm = discoveredById.get(mc.getId());
+            if (dm == null) {
+                continue;
+            }
+            classLoader.addModJar(dm.path());
+            LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
+            mods.put(container.getId(), container);
+        }
+        LOG.info("Loaded " + mods.size() + " mod(s) across " + (loaderFolders.size() + 1) + " folder(s)");
     }
 
     /**
@@ -154,16 +189,18 @@ public final class AprismRuntime {
      *
      * @param gameRoot      the game instance root
      * @param extensionsDir the extensions directory (may be absent)
+     * @throws DependencyResolutionException if dependencies cannot be resolved
      */
-    public void performLoad(Path gameRoot, Path extensionsDir) {
+    public void performLoad(Path gameRoot, Path extensionsDir) throws DependencyResolutionException {
         loadExtensions(extensionsDir);
         loadMods(gameRoot);
     }
 
     /**
      * Legacy single-folder mod loader. Scans only the given directory (treated
-     * as Aprism native). Retained for backwards compatibility; new callers
-     * should use {@link #loadMods(Path)} with the game root.
+     * as Aprism native) without dependency resolution. Retained for backwards
+     * compatibility; new callers should use {@link #loadMods(Path)} with the
+     * game root.
      *
      * @param modsDir the mods directory
      */
@@ -172,20 +209,118 @@ public final class AprismRuntime {
         ModDiscoverer discoverer = new ModDiscoverer();
         for (ModDiscoverer.DiscoveredMod dm : discoverer.discover(modsDir)) {
             classLoader.addModJar(dm.path());
-            ModContainer container = new SimpleModContainer(dm);
+            LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
             mods.put(container.getId(), container);
-            modLoaderKeys.put(container.getId(), dm.loaderKey());
         }
     }
 
     /**
-     * Invokes the registered entrypoints for the given phase.
+     * Drives the mod lifecycle by invoking the entrypoints corresponding to
+     * the given phase on every loaded mod, in dependency order.
+     *
+     * <p>Phase-to-entrypoint mapping:
+     * <ul>
+     *   <li>{@link AprismPhase#PREINIT} -> {@code main} entrypoint,
+     *       {@link IAprismMod#onPreInitialize}</li>
+     *   <li>{@link AprismPhase#INIT} -> {@code main} entrypoint,
+     *       {@link IAprismMod#onInitialize}</li>
+     *   <li>{@link AprismPhase#SETUP} -> {@code main} entrypoint,
+     *       {@link IAprismMod#onSetup}</li>
+     *   <li>{@link AprismPhase#COMPLETE} -> {@code main} entrypoint,
+     *       {@link IAprismMod#onComplete}</li>
+     *   <li>{@link AprismPhase#CLIENT} -> {@code client} entrypoint,
+     *       {@link IAprismMod#onInitialize}</li>
+     *   <li>{@link AprismPhase#SERVER} -> {@code server} entrypoint,
+     *       {@link IAprismMod#onInitialize}</li>
+     * </ul>
      *
      * @param phase the phase to invoke
      */
     public void invokeEntrypoints(AprismPhase phase) {
-        // Real entrypoint invocation is delegated to EntryPointInvoker; this
-        // hook exists so the runtime can drive the lifecycle in phase order.
+        ensureInitialized();
+        String entrypointKey = entrypointKeyFor(phase);
+        if (entrypointKey == null) {
+            return;
+        }
+        for (LoadedModContainer container : mods.values()) {
+            invokeModEntrypoint(container, entrypointKey, phase);
+        }
+    }
+
+    /**
+     * Invokes the entrypoint of a single mod for the given phase.
+     *
+     * @param container     the mod container
+     * @param entrypointKey the entrypoint key ({@code main}, {@code client}, {@code server})
+     * @param phase         the lifecycle phase
+     */
+    private void invokeModEntrypoint(LoadedModContainer container, String entrypointKey, AprismPhase phase) {
+        AprismManifest manifest = container.getManifest();
+        List<String> entrypoints = manifest.entrypoints() == null
+                ? List.of()
+                : manifest.entrypoints().getOrDefault(entrypointKey, List.of());
+        if (entrypoints.isEmpty()) {
+            return;
+        }
+        AprismContext context = new AprismContextImpl(container, eventBus, registry);
+        for (String className : entrypoints) {
+            try {
+                Class<?> clazz = classLoader.loadClass(className);
+                Object instance = clazz.getDeclaredConstructor().newInstance();
+                if (instance instanceof IAprismMod mod) {
+                    invokePhaseMethod(mod, context, phase);
+                    // Retain the first instantiated instance on the container
+                    if (container.getInstance() == null) {
+                        container.setInstance(instance);
+                    }
+                }
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException("Failed to invoke entrypoint " + className
+                        + " for mod " + container.getId() + " in phase " + phase, e);
+            }
+        }
+    }
+
+    /**
+     * Maps a lifecycle phase to the entrypoint key that should be invoked.
+     *
+     * @param phase the lifecycle phase
+     * @return the entrypoint key, or {@code null} if the phase has no entrypoint
+     */
+    private static String entrypointKeyFor(AprismPhase phase) {
+        return switch (phase) {
+            case PREINIT, INIT, SETUP, COMPLETE -> "main";
+            case CLIENT -> "client";
+            case SERVER -> "server";
+        };
+    }
+
+    /**
+     * Dispatches the appropriate lifecycle method on the mod instance.
+     *
+     * @param mod     the mod instance
+     * @param context the mod-scoped context
+     * @param phase   the lifecycle phase
+     */
+    private static void invokePhaseMethod(IAprismMod mod, AprismContext context, AprismPhase phase) {
+        switch (phase) {
+            case PREINIT -> mod.onPreInitialize(context);
+            case INIT -> mod.onInitialize(context);
+            case SETUP -> mod.onSetup(context);
+            case COMPLETE -> mod.onComplete(context);
+            case CLIENT, SERVER -> mod.onInitialize(context);
+        }
+    }
+
+    /**
+     * Convenience: runs the full common lifecycle (PREINIT -> INIT -> SETUP ->
+     * COMPLETE). Skips CLIENT/SERVER since those are distribution-specific.
+     */
+    public void invokeCommonLifecycle() {
+        invokeEntrypoints(AprismPhase.PREINIT);
+        invokeEntrypoints(AprismPhase.INIT);
+        invokeEntrypoints(AprismPhase.SETUP);
+        invokeEntrypoints(AprismPhase.COMPLETE);
     }
 
     /**
@@ -245,14 +380,14 @@ public final class AprismRuntime {
      * @param id the mod id
      * @return the mod container, or {@code null} if no such mod is loaded
      */
-    public ModContainer getMod(String id) {
+    public LoadedModContainer getMod(String id) {
         return mods.get(id);
     }
 
     /**
-     * @return all loaded mod containers, in insertion order
+     * @return all loaded mod containers, in dependency-resolved load order
      */
-    public List<ModContainer> getMods() {
+    public List<LoadedModContainer> getMods() {
         return List.copyOf(mods.values());
     }
 
@@ -263,7 +398,8 @@ public final class AprismRuntime {
      * @return the loader key (e.g. {@code "aprism"}, {@code "Fa"}, ...), or empty
      */
     public Optional<String> getLoaderKey(String id) {
-        return Optional.ofNullable(modLoaderKeys.get(id));
+        LoadedModContainer mc = mods.get(id);
+        return mc == null ? Optional.empty() : Optional.of(mc.getLoaderKey());
     }
 
     private void ensureInitialized() {
@@ -273,37 +409,31 @@ public final class AprismRuntime {
     }
 
     /**
-     * Minimal {@link AprismEventBus} implementation backed by a map of event
-     * type to listener list.
+     * Shuts down the runtime, closing the classloader and releasing all
+     * held resources (mod jars, extension handles). After shutdown the
+     * runtime must be re-initialized via {@link #initialize} before use.
      *
-     * @author BlockConnect@StarsailsClover
+     * <p>This is primarily intended for tests and graceful application
+     * shutdown. On Windows it is essential to call this before deleting
+     * mod jar files, because {@link AprismClassLoader} (a URLClassLoader)
+     * holds file locks on every added jar.
      */
-    private static final class SimpleEventBus implements AprismEventBus {
-        private final Map<Class<?>, List<AprismEventListener<?>>> listeners = new HashMap<>();
-
-        @Override
-        public <E extends AprismEvent> void register(Class<E> eventType, AprismEventListener<E> listener) {
-            listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
-        }
-
-        @Override
-        public <E extends AprismEvent> void unregister(Class<E> eventType, AprismEventListener<E> listener) {
-            List<AprismEventListener<?>> l = listeners.get(eventType);
-            if (l != null) {
-                l.remove(listener);
+    public void shutdown() {
+        if (classLoader != null) {
+            try {
+                classLoader.close();
+            } catch (IOException e) {
+                LOG.warning("Failed to close AprismClassLoader: " + e.getMessage());
             }
         }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public void post(AprismEvent event) {
-            List<AprismEventListener<?>> l = listeners.get(event.getClass());
-            if (l != null) {
-                for (AprismEventListener<?> listener : l) {
-                    ((AprismEventListener<AprismEvent>) listener).onEvent(event);
-                }
-            }
-        }
+        classLoader = null;
+        eventBus = null;
+        registry = null;
+        entryPointInvoker = null;
+        extensionLoader = null;
+        instrumentation = null;
+        mods.clear();
+        loadedExtensions.clear();
     }
 
     /**
@@ -333,48 +463,6 @@ public final class AprismRuntime {
                 namespaces.add(key.substring(0, key.indexOf(':')));
             }
             return namespaces;
-        }
-    }
-
-    /**
-     * Minimal {@link ModContainer} backed by a discovered mod.
-     *
-     * @author BlockConnect@StarsailsClover
-     */
-    private record SimpleModContainer(ModDiscoverer.DiscoveredMod discovered) implements ModContainer {
-        @Override
-        public String getId() {
-            return discovered.manifest().id();
-        }
-
-        @Override
-        public String getVersion() {
-            return discovered.manifest().version();
-        }
-
-        @Override
-        public String getDisplayName() {
-            return discovered.manifest().displayName();
-        }
-
-        @Override
-        public String getDescription() {
-            return discovered.manifest().description();
-        }
-
-        @Override
-        public Path getSourcePath() {
-            return discovered.path();
-        }
-
-        @Override
-        public Object getInstance() {
-            return null;
-        }
-
-        @Override
-        public <T> Optional<T> getInstance(Class<T> type) {
-            return Optional.empty();
         }
     }
 }
