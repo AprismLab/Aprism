@@ -4,9 +4,9 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 
 /**
- * Gradle plugin that registers the Aprism packaging tasks ({@code packageAje}
- * and {@code packageAbe}), the {@link AprismPackagingExtension} extension, and
- * applies the shadow plugin for fat-jar assembly.
+ * Gradle plugin that registers the Aprism packaging tasks ({@code packageAje},
+ * {@code packageAbe}, and {@code packageAep}), the {@link AprismPackagingExtension}
+ * extension, and applies the shadow plugin for fat-jar assembly.
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -24,5 +24,6 @@ public final class AprismPackagingPlugin implements Plugin<Project> {
         project.getExtensions().create(EXTENSION_NAME, AprismPackagingExtension.class);
         project.getTasks().register("packageAje", PackageAjeTask.class);
         project.getTasks().register("packageAbe", PackageAbeTask.class);
+        project.getTasks().register("packageAep", PackageAepTask.class);
     }
 }
