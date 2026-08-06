@@ -20,7 +20,7 @@ architectury-loom = "1.10-alpha.8"
 shadow = "9.0.0-beta12"
 
 # Mixin
-mixin = "0.15.7+mixin.0.8.7"
+mixin = "0.16.5+mixin.0.8.7"
 asm = "9.9"
 
 # JSON / TOML

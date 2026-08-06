@@ -8,8 +8,7 @@ plugins {
 dependencies {
     api project(':aprism-api')
     api project(':aprism-manifest')
-    // Mixin will be added when the transformer is fully implemented
-    // api libs.mixin
+    api libs.mixin
     api libs.bundles.asm
 
     testImplementation libs.bundles.testing

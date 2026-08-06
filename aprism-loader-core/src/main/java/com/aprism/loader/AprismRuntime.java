@@ -106,6 +106,9 @@ public final class AprismRuntime {
         this.mods.clear();
         this.loadedExtensions.clear();
         this.extensionContainers.clear();
+        // Bootstrap the SpongePowered Mixin environment so that @Mixin/@Inject
+        // annotations declared by loaded mods are applied via the transformer.
+        AprismMixinBootstrap.bootstrap(classLoader);
     }
 
     /**
@@ -291,6 +294,8 @@ public final class AprismRuntime {
             classLoader.addModJar(dm.path());
             LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
             mods.put(container.getId(), container);
+            // Register the mod's mixin configs (if any) with the Mixin environment
+            registerMixins(dm.manifest());
         }
         LOG.info("Loaded " + mods.size() + " mod(s) across " + (loaderFolders.size() + 1) + " folder(s)");
     }
@@ -537,6 +542,42 @@ public final class AprismRuntime {
     }
 
     /**
+     * Registers every mixin config declared in a mod manifest with the Mixin
+     * environment. The {@code mixins} field of {@link AprismManifest} holds a
+     * list of config resource paths (e.g. {@code "mymod.mixins.json"}); each
+     * is offered to {@link AprismMixinBootstrap#offerMixinConfig}.
+     *
+     * @param manifest the mod manifest (may have a null or empty mixins list)
+     */
+    private void registerMixins(AprismManifest manifest) {
+        if (manifest == null || manifest.mixins() == null) {
+            return;
+        }
+        for (String config : manifest.mixins()) {
+            AprismMixinBootstrap.offerMixinConfig(config);
+        }
+    }
+
+    /**
+     * Registers a mixin configuration with the Mixin environment. Exposed for
+     * extensions and advanced callers that need to register mixin configs
+     * outside the normal mod-manifest flow.
+     *
+     * @param configName the mixin config resource path (e.g. "mymod.mixins.json")
+     */
+    public void offerMixinConfig(String configName) {
+        AprismMixinBootstrap.offerMixinConfig(configName);
+    }
+
+    /**
+     * @return whether the SpongePowered Mixin environment has been bootstrapped
+     *         and a transformer is available for class transformation
+     */
+    public boolean isMixinAvailable() {
+        return AprismMixinBootstrap.isAvailable();
+    }
+
+    /**
      * Shuts down the runtime, closing the classloader and releasing all
      * held resources (mod jars, extension handles). After shutdown the
      * runtime must be re-initialized via {@link #initialize} before use.
@@ -564,6 +605,7 @@ public final class AprismRuntime {
         loadedExtensions.clear();
         extensionContainers.clear();
         cleanupExtensionTempDir();
+        AprismMixinBootstrap.reset();
     }
 
     /**
