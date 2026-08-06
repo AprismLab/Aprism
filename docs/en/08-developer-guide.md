@@ -1,7 +1,7 @@
 # Aprism Mod Developer Guide: Develop and Export .aje/.abe Modpacks
 
 > Document 8 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 
@@ -440,7 +440,7 @@ fabricLoader       = "0.16.0"
 fabricApi          = "0.102.0+1.21.1"
 neoforge           = "21.1.1"
 architecturyLoom   = "1.7-SNAPSHOT"
-aprismApi          = "26.0-Alpha1-Phase0"
+aprismApi          = "26.0-Alpha.1"
 shadow             = "8.1.1"
 aprismPackaging    = "0.1.0"
 

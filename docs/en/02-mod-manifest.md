@@ -1,7 +1,7 @@
 # Aprism JE / BE Mod Manifest Specification
 
 > Document 2 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 
@@ -465,4 +465,4 @@ A mod originally authored for JE Fabric, converted to BE. The `.abe` manifest de
 - SemVer 2.0.0 specification, semver.org.
 - Maven version range syntax, Apache Maven documentation.
 - LeviLamina manifest and multi-language modding precedent, LeviLamina project.
-- Aprism `FACT.md` v26.0-Alpha1-Phase0, Architecture Decisions 9.4 and 9.9.
+- Aprism `FACT.md` v26.0-Alpha.1, Architecture Decisions 9.4 and 9.9.

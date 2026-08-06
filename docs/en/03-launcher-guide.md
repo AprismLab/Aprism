@@ -1,7 +1,7 @@
 # Minecraft JE/BE Launcher Aprism Adaptation, Download, Installation and Management Module Development Guide
 
 > Document 3 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 
@@ -98,18 +98,26 @@ Aprism itself requires Java 21 as a baseline runtime for the launcher process. T
 
 ### 3.4 Mod Directory Management
 
-JE mods live in `.minecraft/mods/` (flat directory or `mods/<version>/` per-instance layout for MultiMC/Prism). Aprism `.aje` archives are placed in the same directory as standard `.jar` mods. The Aprism agent scans `mods/` at startup and loads any file with a `.aje` extension as an Aprism mod container; `.jar` files are passed through to Fabric/NeoForge unmodified.
+Aprism separates mods by loader. Each loader gets its own directory under the instance root. Aprism native mods (`.aje`) go in `mods/`; loader-specific mods go in `<loader>-mods/` and require the corresponding Aprism Extension (`.aep`) to be installed in `aprism-extensions/`.
 
 ```
 .minecraft/
+  aprism-extensions/
+    Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep
+    NeoForge-Support-A[26.0,27.0)-N[21.4,21.5)-JE-1.21.4.aep
   mods/
+    example-aprism-mod.aje
+    another-native-mod.aje
+  fabric-mods/
     fabric-api.jar
-    aprism-core.aje
-    example-mod.aje
     jei.jar
+  neoforge-mods/
+    jei-neoforge.jar
 ```
 
-Nested directory scanning is disabled by default to avoid picking up `mods/<disabled>/` holding areas used by some launchers. The launcher exposes an explicit "Aprism mods folder" view that lists `.aje` files alongside co-installed `.jar` mods.
+The Aprism agent scans `aprism-extensions/` first (Phase 1), registers loader-support extensions, then scans `mods/` for `.aje` files (Phase 2a) and each registered `<loader>-mods/` folder for loader-specific mods (Phase 2b). If a loader's Support extension is NOT installed, the corresponding `<loader>-mods/` folder is simply not scanned.
+
+Nested directory scanning is disabled by default to avoid picking up `<disabled>/` holding areas used by some launchers. The launcher exposes an explicit "Aprism mod folders" view that lists `.aje` files in `mods/` alongside co-installed `.jar` / `.litemod` mods in their respective `<loader>-mods/` folders. Launchers must NOT flatten `<loader>-mods/` into `mods/`; doing so is non-conformant.
 
 ### 3.5 Adapter Patterns for Existing Launchers
 
@@ -282,10 +290,13 @@ The download pipeline:
 2. Download the artifact to a staging directory (`aprism/cache/mods/<id>-<version>.part`).
 3. Compute SHA256; compare to `descriptor.sha256`. On mismatch, delete the part file and retry once.
 4. Verify the Aprism manifest signature inside the archive (`.aje`/`.abe` archives include an `aprism.sig` file signed by the Aprism mod signing key).
-5. Move the verified file to the target directory:
-   - JE: `.minecraft/mods/<id>-<version>.aje`
-   - BE client: `games/com.mojang/behavior_packs/<id>/` (unpacked) or the Aprism native mod directory.
-   - BE BDS: `<bds_root>/behavior_packs/<id>/`.
+5. Move the verified file to the target directory based on its type:
+   - JE `.aje` (Aprism native): `.minecraft/mods/<id>-<version>.aje`
+   - JE `.jar` (loader-specific): `.minecraft/<loader>-mods/<id>-<version>.jar` (e.g. `fabric-mods/`)
+   - JE `.aep` (extension): `.minecraft/aprism-extensions/<extension-file-name>.aep`
+   - BE `.abe` native: `games/com.mojang/aprism_mods/<id>/` (unpacked)
+   - BE `.abe` script: `games/com.mojang/behavior_packs/<id>/` (unpacked)
+   - BE BDS: `<bds_root>/games/com.mojang/aprism_mods/<id>/` (native) or `<bds_root>/behavior_packs/<id>/` (script)
 6. Update the mod list state file with the new entry and `enabled=true`.
 
 Unsigned Aprism mods MUST NOT be loaded by default. The user may explicitly opt in to running an unsigned mod for a specific instance, with the choice recorded in `aprism/state/unsigned-allowlist.json`.

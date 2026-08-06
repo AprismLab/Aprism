@@ -1,7 +1,7 @@
 # Aprism Loader Product Feasibility Report
 
 > Document 4 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 

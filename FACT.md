@@ -94,6 +94,12 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - [DONE] Project skeleton: multi-module Gradle build (settings.gradle, root build.gradle, gradle.properties, libs.versions.toml) with 4 subprojects (aprism-api, aprism-manifest, aprism-loader-core, aprism-packaging).
 - [DONE] Java source skeleton: IAprismMod/AprismContext/AprismEventBus/AprismPhase (api), ManifestParser/AprismManifest/DependencyResolver/VersionRange (manifest), AprismAgent/AprismClassLoader/AprismClassTransformer/AprismRuntime (loader-core), AprismPackagingPlugin/PackageAjeTask/PackageAbeTask (packaging).
 - [DONE] Commit skeleton + versioning correction to GitHub (3 conventional commits: fix(versioning), feat(build), docs).
+- [DONE] Audited all 16 docs for versioning correctness; found and fixed old-format remnants in all doc headers + wrong versioning explanation in architecture doc (01).
+- [DONE] Researched and designed Aprism Extensions (*.aep) architecture: Aprism does NOT natively support other loaders; loader support is provided by .aep extensions.
+- [DONE] Designed per-loader mod folder separation: /mods (Aprism native .aje), /fabric-mods, /neoforge-mods, /forge-mods, /quilt-mods, /liteloader-mods.
+- [DONE] Defined priority version targets: JE 26.2/26.1.2/1.21.10/1.21.4/1.16.5, BE 26.2/26.1.2 (BE only from 26.x).
+- [DONE] Updated all 16 docs (EN+ZH) + build.gradle: fixed versioning remnants, added Aprism Extensions (.aep) architecture, per-loader mod folder scheme (/mods, /fabric-mods, etc.), BE 26.x-only support scope, Aprism native superset principle.
+- [TODO] Commit doc architecture update to GitHub.
 
 ## 8. Open Questions / Risks
 
@@ -102,6 +108,24 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - Anti-cheat on BE is server-side + Xbox Live policy; ban risk is real and must be disclosed.
 - BE version adapter + signature DB is the single most important engineering investment.
 - 1.21.11 -> 26.1 boundary breaks binary compatibility (Mojang shipped unobfuscated at 26.1).
+- Extension version-range matching must be deterministic and fast (scanned at every boot).
+- Per-loader folder scheme requires launcher cooperation; launchers must NOT flatten /<loader>-mods into /mods.
+
+## 8a. Priority Version Targets (INTERNAL - not for public disclosure)
+
+JE support line follows Fabric coverage. BE support starts from 26.x ONLY.
+
+| Edition | Target versions | Profile | JDK | Remap |
+|---|---|---|---|---|
+| JE | 26.2 | 26.1+ | Java 25 | no-remap (unobfuscated) |
+| JE | 26.1.2 | 26.1+ | Java 25 | no-remap |
+| JE | 1.21.10 | pre-26.1 | Java 21 | Intermediary remap |
+| JE | 1.21.4 | pre-26.1 | Java 21 | Intermediary remap |
+| JE | 1.16.5 | legacy | Java 8/11 | Intermediary remap (legacy) |
+| BE | 26.2 | 26.x | native | n/a |
+| BE | 26.1.2 | 26.x | native | n/a |
+
+BE versions below 26.x are NOT supported. No backport investment.
 
 ## 9. Architecture Decisions (Synthesized from Research)
 
@@ -170,5 +194,56 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - CI: GitHub Actions matrix (Windows/Linux JVM, Android NDK, iOS). CodeQL + Dependabot.
 
 ### 9.13 Pack Formats
-- .aje = ZIP containing aprism.manifest.json + jar(s) + platform subdirs (fabric/forge/neoforge/liteloader) + resources/ + mixins/.
+- .aje = ZIP containing aprism.manifest.json + <modid>.jar (Aprism native, uses Aprism API) + resources/ + mixins/ + lib/. NO per-loader subdirs; .aje is Aprism-native only.
 - .abe = ZIP containing aprism.manifest.json + behavior_pack/ + resource_pack/ + native/ (per-platform native mod binaries) + scripts/.
+- .aep = ZIP containing aprism.extension.json + extension jar/native + optional resources. See 9.14.
+
+### 9.14 Aprism Extensions (*.aep) - Loader Support Model
+- **Principle**: Aprism Loader is NATIVE. It does NOT natively understand Fabric/Forge/NeoForge/LiteLoader/Quilt mod formats. Loader support is provided by Aprism Extensions (*.aep), which enhance Aprism itself (NOT mods).
+- **Extension types**:
+  - `loader-support`: provides a mod loader runtime for a specific loader (Fabric, Forge, NeoForge, LiteLoader, Quilt).
+  - `api-extension`: extends Aprism API with additional capabilities beyond the core.
+  - `platform-adapter`: adapts Aprism to a specific platform or MC version boundary.
+  - `converter`: provides format conversion pipelines (e.g., JE-to-BE).
+- **Naming convention**: `<Purpose>-A<AprismVerRange>-<LoaderKey><LoaderVerRange>-<MCEdit>-<MCVer>.aep`
+  - `A` = Aprism Loader version range (SemVer range, e.g. `[26.0,27.0)`)
+  - Loader key letters (unique, no conflicts): `Fa`=Fabric, `Fo`=Forge, `N`=NeoForge, `L`=LiteLoader, `Q`=Quilt.
+  - Example: `Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep`
+  - Example: `NeoForge-Support-A[26.0,27.0)-N[21.4,21.5)-JE-1.21.4.aep`
+  - Example: `LiteLoader-Support-A[26.0,27.0)-L[1.7,1.8)-JE-1.16.5.aep`
+- **Placement**: JE `<instance>/aprism-extensions/`; BE `com.mojang/aprism_extensions/`.
+- **Load order**: Extensions load BEFORE mods. Core scans extensions dir, validates version ranges against running Aprism + MC version, registers capabilities. Only after all extensions register does Aprism scan mod directories.
+- **Extension manifest** (`aprism.extension.json`): extensionId, type, aprismRange, loaderRange (for loader-support), mcEdit, mcVersion, entrypoint, provides (capability declarations), depends (other extensions).
+- **Conflicts**: Two loader-support extensions for the SAME loader + MC version range is a conflict; Aprism rejects the lower-priority one and logs. Priority = higher loader version range wins.
+- **Public statement**: Public docs state "Aprism supports other loaders via Aprism Extensions (*.aep)" without disclosing the internal roadmap or priority versions.
+
+### 9.15 Per-Loader Mod Folder Separation (JE)
+- **Principle**: Each mod loader gets its OWN directory. Aprism native mods are separate from loader-specific mods.
+- **Folder scheme**:
+  - `mods/` -> Aprism native `.aje` packs ONLY.
+  - `fabric-mods/` -> Fabric `.jar` mods (requires Fabric-Support.aep).
+  - `neoforge-mods/` -> NeoForge `.jar` mods (requires NeoForge-Support.aep).
+  - `forge-mods/` -> Forge `.jar` mods (requires Forge-Support.aep).
+  - `quilt-mods/` -> Quilt `.jar` mods (requires Quilt-Support.aep).
+  - `liteloader-mods/` -> LiteLoader `.litemod` mods (requires LiteLoader-Support.aep).
+- If a loader's Support extension is NOT installed, the corresponding folder is simply not scanned (no error, no warning unless mods are present in it).
+- Aprism native `.aje` packs in `mods/` use Aprism API exclusively; they do NOT need any loader extension.
+- Mixing `.aje` and `.jar` in the SAME folder is no longer the design. `.aje` -> `mods/`; `.jar` -> `/<loader>-mods/`.
+- Launchers must respect this separation; flattening `/<loader>-mods/` into `mods/` is non-conformant.
+
+### 9.16 BE Mod Placement and Version Support Scope
+- **BE version support**: BE ONLY from 26.x. No BE support for pre-26.x versions (1.21.x BE, etc.). This is a hard scope boundary.
+- **BE mod placement** (all `.abe`, since BE has no competing loaders):
+  - Native mod binaries: `com.mojang/aprism_mods/<modid>/native/<platform>/`
+  - Script API sources: `com.mojang/behavior_packs/<modid>/scripts/` (or `development_behavior_packs/` for dev)
+  - BP/RP content: standard Bedrock `behavior_packs/` and `resource_packs/`
+  - BE extensions: `com.mojang/aprism_extensions/`
+- **BE per-version**: The `com.mojang` path varies by platform (Windows UWP, Android scoped storage, iOS container, BDS). The `aprism_mods/` subdirectory is consistent across all platforms. Version adapter maps MC BE version to signature DB entry.
+- **BE loading**: Aprism native loader injects at process start, scans `aprism_mods/`, validates each `.abe` against the running BE version via signature DB, loads native binaries + registers script BPs per-world.
+- **BE vs JE scope**: BE does NOT have multiple mod loaders. All BE mods are Aprism native (`.abe`). The extension concept applies to BE for api-extension/platform-adapter/converter types, but NOT for loader-support (there are no competing BE loaders).
+
+### 9.17 Aprism Native Superset Principle
+- **JE Native = superset**: Aprism JE Native API is a strict superset of all other JE loaders' APIs. Every capability available in Fabric/Forge/NeoForge/LiteLoader has an Aprism native equivalent (or superior). Mods written for Aprism native get MAXIMUM capabilities.
+- **BE Native approaches JE**: Aprism BE Native API mirrors JE Native API where the platform allows. Documented BE-specific limitations: no JVM (native C++ runtime instead), no Java bytecode transformation (native hooks instead), restricted Script API surface. BE extensions can fill gaps via api-extension type.
+- **Interface contract**: Aprism native API is monotonic (only increases, never removes/renames). Deprecation allowed with notice. This guarantee applies to BOTH JE and BE native APIs.
+- **Loader-specific mods**: Mods using loader-specific APIs (via extensions) get ONLY that loader's capabilities, NOT the Aprism superset. To access the full superset, a mod must be written for Aprism native (`.aje` / `.abe`).

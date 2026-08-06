@@ -1,7 +1,7 @@
 # Aprism Loader Overall Architecture Design
 
 > Document 1 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 
@@ -47,7 +47,8 @@ flowchart TB
         JDK[Bundled Tuned OpenJDK LTS]
         AGENT[Aprism javaagent<br/>premain + ClassFileTransformer]
         CORE[Aprism Loader Core<br/>version-agnostic]
-        ADAPT[JE Adaptation Layer<br/>Fabric/NeoForge/Forge/Quilt/LiteLoader]
+        EXT[Aprism Extensions .aep<br/>loader-support / api-extension<br/>loaded BEFORE mods]
+        ADAPT[JE Adaptation Layer<br/>via .aep extensions]
         MIXIN[Mixin Transformer<br/>downstream of remapper]
         CL[Classloader Subsystem<br/>Knot-style shared + opt-in isolation]
     end
@@ -75,7 +76,7 @@ flowchart TB
 
     GH --> AGENT
     GH --> INJ
-    JDK --> AGENT --> CORE --> CL --> MIXIN --> ADAPT --> JEMC
+    JDK --> AGENT --> CORE --> EXT --> CL --> MIXIN --> ADAPT --> JEMC
     ADAPT --> CONV --> ABE --> BE
     INJ --> LDR --> HOOK --> BEWIN
     LDR --> BEDROID
@@ -84,7 +85,11 @@ flowchart TB
     SIG --> LDR
 ```
 
-The JE path is a strict pipeline: bundled JDK hosts the Aprism javaagent, which installs a `ClassFileTransformer` over the loader core. The loader core owns classloaders, the Mixin transformer, and the adaptation layer, which dispatches to per-loader providers. The BE path is parallel: a per-platform injector bootstraps the 3-layer loader, which consults the version adapter and signature database before installing hooks through a platform-specific hook backend. The conversion module bridges the two: it consumes a packaged `.aje` artifact and emits a `.abe` artifact, deferring to Script API where semantics align and to native hooks otherwise.
+The JE path is a strict pipeline: bundled JDK hosts the Aprism javaagent, which installs a `ClassFileTransformer` over the loader core. The loader core scans `aprism-extensions/` first, registers loader-support extensions, then owns classloaders, the Mixin transformer, and the adaptation layer (provided by extensions). The BE path is parallel: a per-platform injector bootstraps the 3-layer loader, which consults the version adapter and signature database before installing hooks through a platform-specific hook backend. The conversion module bridges the two: it consumes a packaged `.aje` artifact and emits a `.abe` artifact, deferring to Script API where semantics align and to native hooks otherwise.
+
+**Aprism Native Superset**: Aprism JE Native API is a strict superset of all other JE loaders' APIs. Aprism BE Native API mirrors JE Native where the platform allows. Mods written for Aprism native (`.aje` / `.abe`) get maximum capabilities; loader-specific mods (via extensions) get only that loader's capabilities.
+
+**BE Support Scope**: Aprism BE supports Minecraft Bedrock Edition from version 26.x onwards. BE versions below 26.x are NOT supported.
 
 ## 4. JE Aprism Native Foundation
 
@@ -124,25 +129,35 @@ SpongePowered Mixin is the sole bytecode injection mechanism. Aprism registers e
 
 For Minecraft versions prior to 26.1, Aprism consumes Fabric Intermediary mappings and applies TinyRemapper-equivalent remapping at load time so that mods authored against intermediaries resolve against runtime obfuscated names. For 26.1 and later, Mojang ships unobfuscated jars, so Aprism runs in no-remap mode: the remapper is a pass-through and Mixin operates directly on official names. Refmaps (the YAML mapping from development names to intermediary names shipped inside mod jars) are honored in remapped mode and ignored in no-remap mode.
 
-## 6. JE Adaptation Layer
+## 6. JE Adaptation Layer (via Aprism Extensions)
 
-The adaptation layer is a set of provider implementations, one per supported loader format. Each provider parses its native manifest, constructs a `ModContainer`, registers entrypoints, and bridges its native event/registration model onto the Aprism event bus.
+Aprism does NOT natively understand Fabric, Forge, NeoForge, Quilt, or LiteLoader mod formats. Loader support is provided by Aprism Extensions (`.aep`), which enhance Aprism itself and load BEFORE any mods. Each `loader-support` extension provides a loader runtime that scans its corresponding `<loader>-mods/` directory, parses native manifests, constructs `ModContainer` instances, registers entrypoints, and bridges the native event/registration model onto the Aprism event bus.
 
-| Provider | Native Manifest | Entrypoint Model | Notes |
-|----------|-----------------|------------------|-------|
-| Fabric | `fabric.mod.json` v1 | `main`/`client`/`server` entrypoints | Largest catalog; loads natively in shared space. |
-| NeoForge | `neoforge.mods.toml` | `@Mod` annotation, `IEventBus` | Diverged from Forge July 2023; isolated classloader shim. |
-| Forge | `mods.toml` | `@Mod` annotation, `@SubscribeEvent` | Legacy; isolated classloader shim. |
-| Quilt | `quilt.mod.json` | QSL entrypoints | QSL discontinued Dec 2025; loads Fabric mods via compat shim. ModContainer identity bug fixed in Quilt 0.29.2 is enforced by Aprism's identity invariant regardless. |
-| LiteLoader | `litemod.json` | `init()` lifecycle | Legacy 1.12.2 only, abandoned 2017. Read-only compatibility. |
+| Extension | Loader Key | Native Manifest | Entrypoint Model | Mod Folder |
+|-----------|-----------|-----------------|------------------|------------|
+| Fabric-Support.aep | `Fa` | `fabric.mod.json` v1 | `main`/`client`/`server` entrypoints | `fabric-mods/` |
+| NeoForge-Support.aep | `N` | `neoforge.mods.toml` | `@Mod` annotation, `IEventBus` | `neoforge-mods/` |
+| Forge-Support.aep | `Fo` | `mods.toml` | `@Mod` annotation, `@SubscribeEvent` | `forge-mods/` |
+| Quilt-Support.aep | `Q` | `quilt.mod.json` | QSL entrypoints | `quilt-mods/` |
+| LiteLoader-Support.aep | `L` | `litemod.json` | `init()` lifecycle | `liteloader-mods/` |
+
+If a loader's Support extension is NOT installed, the corresponding `<loader>-mods/` folder is simply not scanned. Aprism native `.aje` mods in `mods/` do NOT need any extension.
 
 ### 6.1 Entrypoint and Event Bus Adapters
 
-Each provider exposes an adapter that translates its native entrypoint contract onto the Aprism phase-strict event bus. The Fabric functional registration adapter maps `Registry.register` calls and `RegistryHelper` callbacks onto Aprism's `SETUP` phase. The Forge `addListener` adapter maps `IEventBus.addListener` subscriptions onto the corresponding Aprism phase. Both adapters are backed by the same bus instance; there is no per-loader bus.
+Each loader-support extension exposes an adapter that translates its native entrypoint contract onto the Aprism phase-strict event bus. The Fabric functional registration adapter maps `Registry.register` calls and `RegistryHelper` callbacks onto Aprism's `SETUP` phase. The Forge `addListener` adapter maps `IEventBus.addListener` subscriptions onto the corresponding Aprism phase. Both adapters are backed by the same bus instance; there is no per-loader bus.
 
 ### 6.2 Auto-Discovery Fallback
 
-When a mod ships without an `aprism.manifest.json`, the adaptation layer auto-discovers `fabric.mod.json`, `neoforge.mods.toml`, `mods.toml`, and `litemod.json` in priority order and synthesizes an Aprism manifest. Synthesis is lossy: only the fields with unambiguous Aprism equivalents are populated. Mods requiring Aprism-specific features (cross-edition conversion, compatibility-group declaration) must ship an explicit `aprism.manifest.json`.
+When a loader-specific mod ships without an `aprism.manifest.json`, the extension's loader runtime auto-discovers its native manifest (`fabric.mod.json`, `neoforge.mods.toml`, `mods.toml`, or `litemod.json`) and synthesizes an Aprism manifest. Synthesis is lossy: only fields with unambiguous Aprism equivalents are populated. Mods requiring Aprism-specific features (cross-edition conversion, compatibility-group declaration) must ship an explicit `aprism.manifest.json` and be packaged as `.aje` in `mods/`.
+
+### 6.3 Aprism Native Superset Principle
+
+Aprism JE Native API is a strict superset of all other JE loaders' APIs. Every capability available in Fabric, Forge, NeoForge, Quilt, or LiteLoader has an Aprism native equivalent or superior. Mods written for Aprism native (`.aje` in `mods/`) get MAXIMUM capabilities. Mods using loader-specific APIs (via extensions, `.jar` in `<loader>-mods/`) get ONLY that loader's capabilities. To access the full superset, a mod must be written for Aprism native.
+
+### 6.4 Extension Loading
+
+Extensions load in a dedicated phase before the mod scan. The Aprism core scans `aprism-extensions/`, validates each extension's `aprismRange` and `mcVersion` against the running environment, resolves extension dependencies, registers capabilities, and only then begins scanning mod directories. See Document 7 Section 12 for the full `.aep` specification.
 
 ## 7. BE Injection and Loader Subsystem
 
@@ -324,7 +339,7 @@ Updates are atomic: the new version is staged alongside the existing install, sw
 
 ### 12.1 Version Scheme
 
-The Aprism version follows `v<MC>.<aprism>-<stability>-<phase>`. The current document targets `v26.0-Alpha1-Phase0`, meaning Minecraft 26.0 baseline, Aprism Alpha 1, Phase 0 of the rollout. The Alpha/Phase scheme denotes progressively widening audience and feature freeze: Phase 0 is internal, Phase 1 is closed beta, Phase 2 is open beta, Phase 3 is general availability.
+The Aprism version follows `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>`. The current document targets `v26.0-Alpha.1`, meaning Year 2026 baseline, Aprism major version 0, Alpha sub-version 1. Phase (0-9) is an internal development stage tracker, NOT shown in public version strings; it is recorded only in FACT.md session logs. Alpha is the development sub-version number (Alpha.1 through Alpha.9); Beta is not planned. Official releases use `PreRelease.N` then `Release`. Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`.
 
 ### 12.2 JDK Targets
 

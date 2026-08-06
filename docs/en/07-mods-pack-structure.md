@@ -1,7 +1,7 @@
 # Aprism Mods Pack (.aje/.abe) Classification, Structure and Per-Platform Placement
 
 > Document 7 of 8 | Aprism Loader Documentation Set
-> Version: v26.0-Alpha1-Phase0 | Status: Development
+> Version: v26.0-Alpha.1 | Status: Development
 > Author: BlockConnect@StarsailsClover
 > Canonical language: English (Chinese copy maintained in parallel)
 
@@ -17,7 +17,9 @@ Aprism recognizes two top-level pack extensions, both backed by ZIP. The extensi
 
 ### 2.1 .aje - Aprism Java Edition Pack
 
-A `.aje` pack is a ZIP containing `aprism.manifest.json` at the root, one or more Java archives (`<modid>.jar` or per-loader jars), optional platform subdirectories (`fabric/`, `forge/`, `neoforge/`, `quilt/`, `liteloader/`), shared `resources/`, mixin configs under `mixins/`, and optional bundled libraries under `lib/`. The Aprism javaagent scans the active instance's `mods/` directory, opens each `.aje` (and any co-located `.jar`), validates the manifest, and registers the mod with the loader core.
+A `.aje` pack is a ZIP containing `aprism.manifest.json` at the root, the mod's main Java archive (`<modid>.jar` using the Aprism native API), shared `resources/`, mixin configs under `mixins/`, and optional bundled libraries under `lib/`. A `.aje` pack is Aprism-native: it uses the Aprism API exclusively and does NOT contain per-loader subdirectories. The Aprism javaagent scans the active instance's `mods/` directory, opens each `.aje`, validates the manifest, and registers the mod with the loader core.
+
+Loader-specific mods (Fabric `.jar`, NeoForge `.jar`, etc.) are NOT placed in `mods/`; they go in per-loader folders (Section 6) and are loaded via Aprism Extensions (`.aep`, Section 12).
 
 ### 2.2 .abe - Aprism Bedrock Edition Pack
 
@@ -33,20 +35,20 @@ The manifest `type` field selects the runtime and entrypoint contract:
 | `script` | JavaScript / TypeScript | `scripts/*.js` (+ sourcemaps) | BE only; standard Bedrock Script API |
 | `hybrid` | Native + Script | `native/` + `scripts/` | BE only; native binary calls into Script API |
 | `converted` | Java projected to BE | `behavior_pack/` synthesized from JE assets | BE only; output of JE-to-BE conversion |
-| `java` (default for `.aje`) | JVM | `<modid>.jar` + per-loader jars | JE only |
+| `java` (default for `.aje`) | JVM | `<modid>.jar` (Aprism native API) | JE only |
 
 ### 2.4 Comparison with adjacent formats
 
-| Property | `.aje` | `.abe` | `.jar` | `.mcpack` | `.mcaddon` |
-|---|---|---|---|---|---|
-| Container | ZIP | ZIP | ZIP | ZIP | ZIP |
-| Consumer | Aprism javaagent | Aprism native loader | Loader-specific (Fabric/NeoForge/etc.) | Bedrock engine | Bedrock engine |
-| Manifest | `aprism.manifest.json` | `aprism.manifest.json` | `fabric.mod.json` / `neoforge.mods.toml` / `META-INF/MANIFEST.MF` | `manifest.json` | `manifest.json` (one or more) |
-| Multi-loader | yes (per-loader subdirs) | n/a | no | n/a | n/a |
-| Native binaries | no | yes (`native/`) | no | no | no |
-| Script API | no | yes (`scripts/`) | no | yes (BP) | yes (BP) |
-| Target edition | JE | BE | JE | BE | BE |
-| Aprism-native | yes | yes | consumed via fallback | not consumed | not consumed |
+| Property | `.aje` | `.abe` | `.aep` | `.jar` | `.mcpack` | `.mcaddon` |
+|---|---|---|---|---|---|---|
+| Container | ZIP | ZIP | ZIP | ZIP | ZIP | ZIP |
+| Consumer | Aprism javaagent | Aprism native loader | Aprism core (pre-mod) | Loader-specific (via `.aep`) | Bedrock engine | Bedrock engine |
+| Manifest | `aprism.manifest.json` | `aprism.manifest.json` | `aprism.extension.json` | `fabric.mod.json` / `neoforge.mods.toml` / `META-INF/MANIFEST.MF` | `manifest.json` | `manifest.json` (one or more) |
+| Purpose | Aprism-native mod | Aprism-native BE mod | Enhances Aprism itself | Loader-specific mod | Bedrock pack | Bedrock pack bundle |
+| Native binaries | no | yes (`native/`) | yes (BE) | no | no | no |
+| Script API | no | yes (`scripts/`) | no | no | yes (BP) | yes (BP) |
+| Target edition | JE | BE | JE / BE | JE | BE | BE |
+| Aprism-native | yes | yes | n/a (is Aprism) | loaded via extension | not consumed | not consumed |
 
 ## 3. .aje Pack Structure
 
@@ -56,23 +58,8 @@ The manifest `type` field selects the runtime and entrypoint contract:
 my-mod-1.0.0.aje                              (ZIP container)
 |
 +-- aprism.manifest.json                       (REQUIRED, at ZIP root)
-+-- my-mod.jar                                 (REQUIRED if no per-loader jar; main mod code)
++-- my-mod.jar                                 (REQUIRED; main mod code, Aprism native API)
 +-- icon.png                                   (optional, pack icon)
-|
-+-- fabric/                                    (optional, Fabric-specific jar)
-|   +-- my-mod-fabric.jar
-|
-+-- neoforge/                                  (optional, NeoForge-specific jar)
-|   +-- my-mod-neoforge.jar
-|
-+-- forge/                                     (optional, Forge-specific jar)
-|   +-- my-mod-forge.jar
-|
-+-- quilt/                                     (optional, Quilt-specific jar)
-|   +-- my-mod-quilt.jar
-|
-+-- liteloader/                                (optional, LiteLoader legacy)
-|   +-- my-mod.litemod
 |
 +-- resources/                                 (optional, shared assets)
 |   +-- assets/
@@ -102,12 +89,7 @@ my-mod-1.0.0.aje                              (ZIP container)
 | Path | Required | Purpose |
 |---|---|---|
 | `aprism.manifest.json` | yes | Manifest; the only file Aprism reads first |
-| `<modid>.jar` or `<modid>-common.jar` | yes (one of) | Main mod code; used when no per-loader jar matches the active loader |
-| `fabric/<modid>-fabric.jar` | no | Fabric-specific overrides and entrypoints |
-| `neoforge/<modid>-neoforge.jar` | no | NeoForge-specific overrides and entrypoints |
-| `forge/<modid>-forge.jar` | no | Forge-specific overrides and entrypoints |
-| `quilt/<modid>-quilt.jar` | no | Quilt-specific overrides and entrypoints |
-| `liteloader/<modid>.litemod` | no | LiteLoader legacy mod (zip with `litemod.json`) |
+| `<modid>.jar` | yes | Main mod code; uses the Aprism native API exclusively |
 | `resources/` | no | Shared assets merged into the game's virtual filesystem |
 | `mixins/` | no | Mixin config JSONs referenced from the manifest `mixins` array |
 | `lib/` | no | Bundled libraries, JiJ-style; added to the mod's isolated classloader |
@@ -115,7 +97,7 @@ my-mod-1.0.0.aje                              (ZIP container)
 
 ### 3.3 Tree examples
 
-**Single-loader mod (Fabric only):**
+**Simple Aprism-native mod:**
 
 ```
 simple-mod-1.0.0.aje
@@ -125,22 +107,20 @@ simple-mod-1.0.0.aje
     +-- simple-mod.mixins.json
 ```
 
-**Multi-loader mod (Fabric + NeoForge + Forge):**
+**Mod with bundled libraries and resources:**
 
 ```
-cross-loader-2.3.1.aje
+feature-mod-2.3.1.aje
 +-- aprism.manifest.json
-+-- cross-loader-common.jar
-+-- fabric/
-|   +-- cross-loader-fabric.jar
-+-- neoforge/
-|   +-- cross-loader-neoforge.jar
-+-- forge/
-|   +-- cross-loader-forge.jar
++-- feature-mod.jar
 +-- resources/
 |   +-- assets/
+|       +-- feature-mod/
+|           +-- textures/
 +-- mixins/
-    +-- cross-loader.mixins.json
+|   +-- feature-mod.mixins.json
++-- lib/
+    +-- somelib-2.1.0.jar
 ```
 
 **Mod with native components (rare for `.aje`; for example a JNI shim):**
@@ -317,31 +297,53 @@ When Aprism encounters a pack (by directory scan or import event), it follows th
 
 ## 6. Per-Platform Placement Guide (JE)
 
-### 6.1 Placement table
+### 6.1 Per-loader folder scheme
 
-| Platform | OS | Path | Notes |
+Aprism separates mods by loader. Each loader gets its own directory under the instance root. Aprism native mods (`.aje`) go in `mods/`; loader-specific mods go in `<loader>-mods/` and require the corresponding Aprism Extension (`.aep`, Section 12) to be installed.
+
+| Folder | Contents | Extension required | Notes |
 |---|---|---|---|
-| Vanilla launcher | Windows | `%APPDATA%\.minecraft\mods\` | Default Aprism install target |
-| Vanilla launcher | macOS | `~/Library/Application Support/minecraft/mods/` | Aprism resolves `~` correctly |
-| Vanilla launcher | Linux | `~/.minecraft/mods/` | Conventional location |
-| Prism Launcher | any | `<instance>/mods/` | Per-instance isolation |
-| MultiMC / PolyMC | any | `<instance>/mods/` | Same as Prism |
-| ATLauncher | any | `<instance>/mods/` | Per-instance |
-| CurseForge App | Windows | `<instance>/mods/` | Profile-scoped path |
-| Android JE (PojavLauncher) | Android | `/sdcard/Android/data/net.kdt.pojavlaunch/files/.minecraft/mods/` | Path may vary by launcher build |
-| Android JE (PojavLauncher, scoped storage) | Android 11+ | `/sdcard/Android/data/net.kdt.pojavlaunch/files/games/PojavLauncher/.minecraft/mods/` | Scoped-storage layout |
+| `mods/` | `.aje` (Aprism native) | None | Aprism native API; maximum capabilities |
+| `fabric-mods/` | `.jar` (Fabric) | `Fabric-Support.aep` | Scanned only if extension present |
+| `neoforge-mods/` | `.jar` (NeoForge) | `NeoForge-Support.aep` | Scanned only if extension present |
+| `forge-mods/` | `.jar` (Forge) | `Forge-Support.aep` | Scanned only if extension present |
+| `quilt-mods/` | `.jar` (Quilt) | `Quilt-Support.aep` | Scanned only if extension present |
+| `liteloader-mods/` | `.litemod` (LiteLoader) | `LiteLoader-Support.aep` | Scanned only if extension present |
+| `aprism-extensions/` | `.aep` (Aprism Extensions) | None (loaded by core) | Extensions enhance Aprism itself; loaded before mods |
 
-### 6.2 Aprism javaagent scan behavior
+If a loader's Support extension is NOT installed, the corresponding `<loader>-mods/` folder is simply not scanned. No error is raised unless mods are present in the folder AND the user has enabled strict warnings.
 
-At `premain`, the Aprism javaagent resolves the active Minecraft instance root from the system property `aprism.instance.root` (set by the launcher) or falls back to the default `.minecraft` location for the host OS. It enumerates every file in `<instance>/mods/` ending in `.aje` or `.jar`. For `.aje`, the archive is opened in-place and the manifest is read without extraction. For `.jar`, the legacy discovery order (Section 5.3, step 3) is applied.
+Aprism native `.aje` packs in `mods/` use the Aprism API exclusively and do NOT need any loader extension. Mixing `.aje` and `.jar` in the same folder is NOT the design; `.aje` goes in `mods/`, `.jar` goes in the matching `<loader>-mods/`. Launchers must respect this separation; flattening `<loader>-mods/` into `mods/` is non-conformant.
 
-Mods are loaded in dependency order computed from the manifest `depends` graph. Mods with the same `id` at different versions are deduplicated; the higher SemVer wins, the lower is logged as shadowed. Mixing `.aje` and `.jar` is fully supported in the same `mods/` directory; Aprism treats both as first-class and merges their dependency graphs.
+### 6.2 Instance root per launcher
 
-### 6.3 Mixing with traditional `.jar`
+| Platform | OS | Instance root | Notes |
+|---|---|---|---|
+| Vanilla launcher | Windows | `%APPDATA%\.minecraft\` | Default Aprism install target |
+| Vanilla launcher | macOS | `~/Library/Application Support/minecraft/` | Aprism resolves `~` correctly |
+| Vanilla launcher | Linux | `~/.minecraft/` | Conventional location |
+| Prism Launcher | any | `<instance>/` | Per-instance isolation |
+| MultiMC / PolyMC | any | `<instance>/` | Same as Prism |
+| ATLauncher | any | `<instance>/` | Per-instance |
+| CurseForge App | Windows | `<instance>/` | Profile-scoped path |
+| Android JE (PojavLauncher) | Android | `/sdcard/Android/data/net.kdt.pojavlaunch/files/.minecraft/` | Path may vary by launcher build |
+| Android JE (PojavLauncher, scoped storage) | Android 11+ | `/sdcard/Android/data/net.kdt.pojavlaunch/files/games/PojavLauncher/.minecraft/` | Scoped-storage layout |
 
-A user may keep existing Fabric `.jar` mods alongside new `.aje` packs. Aprism loads both. One rule: if a `.jar` and an `.aje` declare the same `id`, the `.aje` wins because it carries Aprism-only metadata the `.jar` cannot. The `.jar` is logged as shadowed.
+All folders in Section 6.1 are relative to the instance root.
+
+### 6.3 Aprism javaagent scan behavior
+
+At `premain`, the Aprism javaagent resolves the active Minecraft instance root from the system property `aprism.instance.root` (set by the launcher) or falls back to the default `.minecraft` location for the host OS. The scan proceeds in two phases:
+
+**Phase 1 - Extensions:** Scan `aprism-extensions/` for `.aep` files. Validate each extension's version ranges against the running Aprism + Minecraft version. Register loader-support extensions, which declare which `<loader>-mods/` folders they handle.
+
+**Phase 2 - Mods:** Scan `mods/` for `.aje` files (Aprism native). Then, for each registered loader-support extension, scan the corresponding `<loader>-mods/` folder. Loader-specific `.jar` / `.litemod` files are passed to the extension's loader runtime for classloading and initialization.
+
+Mods are loaded in dependency order computed from the manifest `depends` graph. Mods with the same `id` at different versions are deduplicated; the higher SemVer wins, the lower is logged as shadowed.
 
 ## 7. Per-Platform Placement Guide (BE)
+
+Aprism BE supports Minecraft Bedrock Edition from version 26.x onwards. BE versions below 26.x are NOT supported.
 
 ### 7.1 Placement table
 
@@ -456,7 +458,90 @@ For BE native mods, the default is `deny` on iOS (TrollStore) and BDS, and `warn
 
 The `aprism convert` CLI subcommand is the canonical conversion tool. It accepts `--in <path>`, `--out <path>`, `--format {aje,abe}`, and optional `--sign` to produce a cosign-signed output. Conversion is deterministic: the same input produces the same output bytes (modulo ZIP entry timestamps, zeroed). The tool is bundled with Aprism and documented in Document 3.
 
-## 12. References
+## 12. Aprism Extensions (.aep)
+
+### 12.1 What extensions are
+
+Aprism Extensions (`.aep`) enhance Aprism itself; they are NOT mods. An extension can provide loader support (Fabric, Forge, NeoForge, LiteLoader, Quilt), extend the Aprism API, adapt Aprism to a platform boundary, or provide a conversion pipeline. Extensions load BEFORE mods; the mod scan does not begin until all extensions have registered.
+
+### 12.2 Extension types
+
+| Type | Purpose | Example |
+|---|---|---|
+| `loader-support` | Provides a mod loader runtime for a specific loader | `Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep` |
+| `api-extension` | Extends Aprism API beyond the core | `Extra-Registries-A[26.0,27.0)-JE-1.21.4.aep` |
+| `platform-adapter` | Adapts Aprism to a platform or version boundary | `Legacy-Adapter-A[26.0,27.0)-JE-1.16.5.aep` |
+| `converter` | Provides a format conversion pipeline | `JE-to-BE-Converter-A[26.0,27.0)-JE-26.2.aep` |
+
+### 12.3 Naming convention
+
+```
+<Purpose>-A<AprismVerRange>-<LoaderKey><LoaderVerRange>-<MCEdit>-<MCVer>.aep
+```
+
+- `A` prefix = Aprism Loader version range (SemVer range syntax, e.g. `[26.0,27.0)`)
+- Loader key letters (unique, no conflicts):
+  - `Fa` = Fabric
+  - `Fo` = Forge
+  - `N` = NeoForge
+  - `L` = LiteLoader
+  - `Q` = Quilt
+- For non-loader extensions (api-extension, platform-adapter, converter), the loader key and loader version range are omitted.
+
+Examples:
+- `Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep`
+- `NeoForge-Support-A[26.0,27.0)-N[21.4,21.5)-JE-1.21.4.aep`
+- `Forge-Support-A[26.0,27.0)-Fo[47,48)-JE-1.20.1.aep`
+- `LiteLoader-Support-A[26.0,27.0)-L[1.7,1.8)-JE-1.16.5.aep`
+
+### 12.4 .aep pack structure
+
+```
+Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep   (ZIP container)
+|
++-- aprism.extension.json                      (REQUIRED, at ZIP root)
++-- fabric-support.jar                          (extension code; JVM for JE, native for BE)
++-- lib/                                        (optional, bundled dependencies)
+    +-- fabric-loader-0.16.14.jar
+    +-- sponge-mixin-0.15.7.jar
+```
+
+### 12.5 Extension manifest (aprism.extension.json)
+
+| Field | Required | Description |
+|---|---|---|
+| `extensionId` | yes | Unique extension identifier |
+| `type` | yes | One of: `loader-support`, `api-extension`, `platform-adapter`, `converter` |
+| `aprismRange` | yes | SemVer range of compatible Aprism Loader versions |
+| `loaderRange` | conditional | Required for `loader-support`; SemVer range of the loader version supported |
+| `loaderKey` | conditional | Required for `loader-support`; one of `Fa`, `Fo`, `N`, `L`, `Q` |
+| `mcEdit` | yes | `JE` or `BE` |
+| `mcVersion` | yes | Target Minecraft version |
+| `entrypoint` | yes | Extension entrypoint class (JE) or native symbol (BE) |
+| `provides` | no | Capability declarations this extension registers |
+| `depends` | no | Other extensions this one depends on |
+
+### 12.6 Placement
+
+| Edition | Directory | Notes |
+|---|---|---|
+| JE | `<instance>/aprism-extensions/` | Scanned by Aprism javaagent at premain, Phase 1 |
+| BE | `com.mojang/aprism_extensions/` | Scanned by Aprism native loader at injection time, before mod scan |
+
+### 12.7 Conflict resolution
+
+Two `loader-support` extensions for the SAME loader key AND overlapping MC version range is a conflict. Aprism selects the one with the higher `loaderRange` lower bound and rejects the other with a log entry. Non-overlapping MC version ranges for the same loader are allowed (e.g., one extension for 1.16.5, another for 1.21.4).
+
+### 12.8 Load order guarantee
+
+Extensions always load before mods. The Aprism core:
+1. Scans the extensions directory.
+2. Validates each extension's `aprismRange` against the running Aprism version and `mcVersion` against the running Minecraft version.
+3. Resolves extension dependencies (`depends`).
+4. Registers capabilities (`provides`).
+5. Only then begins the mod scan (Phase 2, Section 6.3).
+
+## 13. References
 
 - Document 1: Aprism Loader Overall Architecture Design
 - Document 2: Aprism JE / BE Mod Manifest Specification
