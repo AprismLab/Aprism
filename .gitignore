@@ -1,8 +1,22 @@
-# Reference / research documents (not for distribution)
+# Reference / research reports from other AI assistants (not for distribution)
 其他AI助手生成的文档 仅供参考/
-
-# Documentation (local only, not for repo)
-docs/
+FACT.md
+docs\en\01-architecture-design.md
+docs\en\02-mod-manifest.md
+docs\en\03-launcher-guide.md
+docs\en\04-feasibility-report.md
+docs\en\05-technical-report.md
+docs\en\06-principle-specification.md
+docs\en\07-mods-pack-structure.md
+docs\en\08-developer-guide.md
+docs\zh\01-架构设计.md
+docs\zh\02-模组清单.md
+docs\zh\03-启动器指南.md
+docs\zh\04-可行性报告.md
+docs\zh\05-技术报告.md
+docs\zh\06-原理说明书.md
+docs\zh\07-模组包结构.md
+docs\zh\08-开发者指南.md
 
 # Gradle
 .gradle/
