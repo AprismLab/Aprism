@@ -48,9 +48,21 @@ Each document ships in English (canonical) + Chinese (copy).
 
 ## 5. Versioning Scheme
 
-- Baseline: v26.0
-- Development: `v26.0-Alpha{1-9}-Phase{0-9}` (only Alpha for dev; Alpha 1-9 cycle, Phase 0-9 sub-stages)
-- Official: `v26.0-PreRelease{N}` -> `v26.0-Release`
+Format: `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>`
+
+- `<Year>.<aprism>`: e.g. `v26.0` = Year 2026, Aprism major version 0
+- `<stability>`: `Alpha` (development sub-version), `PreRelease`, `Release`. Beta not planned.
+- `<subVer>`: sub-version number (Alpha 1, 2, 3... = development iterations)
+- `<MCEdit>`: `JE` or `BE` (Minecraft edition)
+- `<MCVer>`: target Minecraft version, e.g. `1.21.4` or `26.2`
+
+Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`
+
+Phase (0-9) is an internal granular development stage tracker, NOT shown in public version strings. Tracked only in FACT.md session logs.
+
+- Internal dev tag: `v26.0-Alpha.1-Phase0` (Phase internal only)
+- Public tag: `v26.0-Alpha.1`
+- Official: `v26.0-PreRelease.1` -> `v26.0-Release`
 - Interface contract: monotonic increment only (never remove/rename); deprecation allowed with notice.
 
 ## 6. Conventions
@@ -64,7 +76,7 @@ Each document ships in English (canonical) + Chinese (copy).
 
 ## 7. Session Log
 
-### Session 2026-08-06 (v26.0-Alpha1-Phase0)
+### Session 2026-08-06 (v26.0-Alpha.1-Phase0)
 - [DONE] Initialized FACT.md.
 - [DONE] Launched 4 parallel deep-research streams (JE loaders, BE modding, platform injection, JVM/MultiLoader/legal).
 - [DONE] Synthesized research into 13 architecture decisions (FACT.md section 9).
@@ -77,7 +89,11 @@ Each document ships in English (canonical) + Chinese (copy).
   - Doc 6: Principle Specification (9 sections, 6 mermaid, JE/BE runtime principles, hook abstraction)
   - Doc 7: Pack Structure (12 sections, .aje/.abe trees, per-platform placement tables, validation)
   - Doc 8: Developer Guide (16 sections, Gradle configs, IAprismMod, aprism-packaging plugin, C++ deep dive)
-- [DONE] Commit to GitHub with conventional commits.
+- [DONE] Commit initial docs set to GitHub with conventional commits.
+- [DONE] Versioning correction: format is now `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>` with Phase internal-only. Updated FACT.md, gradle.properties, libs.versions.toml, README.md.
+- [DONE] Project skeleton: multi-module Gradle build (settings.gradle, root build.gradle, gradle.properties, libs.versions.toml) with 4 subprojects (aprism-api, aprism-manifest, aprism-loader-core, aprism-packaging).
+- [DONE] Java source skeleton: IAprismMod/AprismContext/AprismEventBus/AprismPhase (api), ManifestParser/AprismManifest/DependencyResolver/VersionRange (manifest), AprismAgent/AprismClassLoader/AprismClassTransformer/AprismRuntime (loader-core), AprismPackagingPlugin/PackageAjeTask/PackageAbeTask (packaging).
+- [TODO] Commit skeleton + versioning correction to GitHub.
 
 ## 8. Open Questions / Risks
 

@@ -1,7 +1,7 @@
 # Aprism
 
 > A cross-platform, cross-edition, cross-version Minecraft mod loader and injector compatible with JE/BE.
-> Author: BlockConnect@StarsailsClover | Version: v26.0-Alpha1-Phase0
+> Author: BlockConnect@StarsailsClover | Version: v26.0-Alpha.1 (Phase0 internal)
 
 Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks, brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases).
 
@@ -53,9 +53,14 @@ Project decisions, architecture, and session history are tracked in [FACT.md](FA
 
 ## Versioning
 
-- Baseline: v26.0
-- Development: `v26.0-Alpha{1-9}-Phase{0-9}`
-- Official: `v26.0-PreRelease{N}` -> `v26.0-Release`
+Format: `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>` (Phase is internal-only, not shown publicly)
+
+- Baseline: `v26.0`
+- Development (public): `v26.0-Alpha.1` ... `v26.0-Alpha.9`
+- Internal dev tag: `v26.0-Alpha.1-Phase0` ... `Phase9` (Phase tracked only in FACT.md)
+- Official: `v26.0-PreRelease.1` -> `v26.0-Release`
+- Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`
+- Beta is not planned.
 - Interface contract: monotonic increment only; deprecation allowed with notice.
 
 ## Distribution
