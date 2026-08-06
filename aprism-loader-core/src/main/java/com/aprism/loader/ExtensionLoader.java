@@ -153,6 +153,57 @@ public final class ExtensionLoader {
     }
 
     /**
+     * Registers a loader-support folder at runtime. Called by
+     * {@link ExtensionContextImpl#registerLoaderSupport} when an extension
+     * dynamically declares a folder (as opposed to declaring it in its
+     * manifest's {@code loaderKey} field).
+     *
+     * @param loaderKey the loader key (Fa, Fo, N, L, Q, or custom)
+     * @param folder    the mod folder name relative to the game root
+     */
+    public void addLoaderFolder(String loaderKey, String folder) {
+        loaderFolders.put(loaderKey, folder);
+    }
+
+    /**
+     * Lists the names of embedded jar entries in a {@code .aep} archive. The
+     * returned entry names can be used with
+     * {@link #extractJar(Path, String, Path)} to extract individual jars for
+     * classloader registration.
+     *
+     * @param aepFile the .aep file
+     * @return the list of jar entry names inside the archive (may be empty)
+     * @throws IOException if the archive cannot be read
+     */
+    public List<String> listEmbeddedJarNames(Path aepFile) throws IOException {
+        List<String> jars = new ArrayList<>();
+        try (FileSystem fs = FileSystems.newFileSystem(aepFile, (ClassLoader) null)) {
+            Path root = fs.getPath("/");
+            try (var stream = Files.walk(root)) {
+                stream.filter(p -> p.toString().endsWith(".jar"))
+                      .forEach(p -> jars.add(p.toString().startsWith("/") ? p.toString().substring(1) : p.toString()));
+            }
+        }
+        return jars;
+    }
+
+    /**
+     * Extracts a single embedded jar from a {@code .aep} archive to the given
+     * target file.
+     *
+     * @param aepFile   the .aep file
+     * @param entryName the jar entry name (from {@link #listEmbeddedJarNames})
+     * @param targetFile the destination file
+     * @throws IOException if the entry cannot be read or written
+     */
+    public void extractJar(Path aepFile, String entryName, Path targetFile) throws IOException {
+        try (FileSystem fs = FileSystems.newFileSystem(aepFile, (ClassLoader) null);
+             InputStream is = Files.newInputStream(fs.getPath("/" + entryName))) {
+            Files.copy(is, targetFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /**
      * A loaded extension with its manifest and source path.
      *
      * @param manifest   the parsed extension manifest

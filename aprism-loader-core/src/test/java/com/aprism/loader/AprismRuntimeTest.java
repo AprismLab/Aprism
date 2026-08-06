@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.aprism.api.AprismPhase;
+import com.aprism.api.ExtensionType;
+import com.aprism.loader.testexts.DynamicSupportExtension;
+import com.aprism.loader.testexts.RecordingExtension;
 import com.aprism.loader.testmods.RecordingMod;
 
 /**
@@ -38,6 +41,8 @@ import com.aprism.loader.testmods.RecordingMod;
 class AprismRuntimeTest {
 
     private static final String RECORDING_MOD_CLASS = "com.aprism.loader.testmods.RecordingMod";
+    private static final String RECORDING_EXT_CLASS = "com.aprism.loader.testexts.RecordingExtension";
+    private static final String DYNAMIC_SUPPORT_EXT_CLASS = "com.aprism.loader.testexts.DynamicSupportExtension";
 
     @TempDir
     Path gameRoot;
@@ -45,6 +50,8 @@ class AprismRuntimeTest {
     @BeforeEach
     void setUp() {
         RecordingMod.resetGlobal();
+        RecordingExtension.resetGlobal();
+        DynamicSupportExtension.reset();
         // Re-initialize the singleton runtime for each test
         AprismRuntime.instance().initialize(null, "26.0.0", "JE", "1.21.4");
     }
@@ -313,6 +320,134 @@ class AprismRuntimeTest {
         }
     }
 
+    @Nested
+    class ExtensionLifecycle {
+        @Test
+        void extensionWithEntrypointInvokedOnInitialize() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Test-Ext.aep"),
+                    extensionJson("test-ext", "api-extension", RECORDING_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:test-ext");
+        }
+
+        @Test
+        void extensionWithoutEntrypointRegisteredButNotInvoked() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("No-Entry.aep"),
+                    extensionJson("no-entry", "api-extension", null, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog()).isEmpty();
+            LoadedExtensionContainer container = AprismRuntime.instance().getExtension("no-entry");
+            assertThat(container).isNotNull();
+            assertThat(container.getInstance()).isNull();
+        }
+
+        @Test
+        void extensionInstanceStoredOnContainer() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Test-Ext.aep"),
+                    extensionJson("test-ext", "api-extension", RECORDING_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            LoadedExtensionContainer container = AprismRuntime.instance().getExtension("test-ext");
+            assertThat(container).isNotNull();
+            assertThat(container.getInstance()).isInstanceOf(RecordingExtension.class);
+        }
+
+        @Test
+        void extensionContextProvidesAccessors() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Test-Ext.aep"),
+                    extensionJson("test-ext", "api-extension", RECORDING_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            LoadedExtensionContainer container = AprismRuntime.instance().getExtension("test-ext");
+            RecordingExtension ext = (RecordingExtension) container.getInstance();
+            assertThat(ext.getContext()).isNotNull();
+            assertThat(ext.getContext().getExtension()).isEqualTo(container);
+            assertThat(ext.getContext().getEventBus()).isNotNull();
+            assertThat(ext.getContext().getRegistry()).isNotNull();
+            assertThat(ext.getContext().getLogger()).isNotNull();
+        }
+
+        @Test
+        void extensionTypeParsedOnContainer() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Test-Ext.aep"),
+                    extensionJson("test-ext", "platform-adapter", RECORDING_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            LoadedExtensionContainer container = AprismRuntime.instance().getExtension("test-ext");
+            assertThat(container.getType()).isEqualTo(ExtensionType.PLATFORM_ADAPTER);
+        }
+
+        @Test
+        void manifestDrivenLoaderSupportStillWorks() throws Exception {
+            // Extension with loaderKey in manifest auto-registers folder,
+            // AND the entrypoint is still invoked
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Fabric-Support.aep"),
+                    extensionJson("fabric-support", "loader-support", RECORDING_EXT_CLASS, "Fa", null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            // Folder registered from manifest
+            assertThat(AprismRuntime.instance().getLoaderFolders())
+                    .containsEntry("Fa", "fabric-mods");
+            // Entrypoint also invoked
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:fabric-support");
+        }
+
+        @Test
+        void dynamicLoaderSupportViaContext() throws Exception {
+            // Extension registers folders at runtime via context.registerLoaderSupport
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dynamic.aep"),
+                    extensionJson("dynamic", "loader-support", DYNAMIC_SUPPORT_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(DynamicSupportExtension.getInitCount()).isEqualTo(1);
+            assertThat(AprismRuntime.instance().getLoaderFolders())
+                    .containsEntry("Fa", "fabric-mods")
+                    .containsEntry("N", "neoforge-mods");
+        }
+
+        @Test
+        void extensionLoadsBeforeMods() throws Exception {
+            // Extension registers Fabric support, then a Fabric mod is loaded
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Fabric-Support.aep"),
+                    extensionJson("fabric-support", "loader-support", RECORDING_EXT_CLASS, "Fa", null));
+            writeJar(gameRoot.resolve("fabric-mods").resolve("fabricmod.jar"),
+                    "fabric.mod.json", fabricModJson("fabricmod", "1.0.0"));
+
+            AprismRuntime.instance().performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+
+            // Extension initialized
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:fabric-support");
+            // Mod loaded from fabric-mods/
+            assertThat(AprismRuntime.instance().getMods()).hasSize(1);
+            assertThat(AprismRuntime.instance().getMods().get(0).getId()).isEqualTo("fabricmod");
+            assertThat(AprismRuntime.instance().getMods().get(0).getLoaderKey()).isEqualTo("Fa");
+        }
+
+        @Test
+        void getLoadedExtensionContainersReturnsAll() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext1.aep"),
+                    extensionJson("ext1", "api-extension", RECORDING_EXT_CLASS, null, null));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext2.aep"),
+                    extensionJson("ext2", "api-extension", RECORDING_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            List<LoadedExtensionContainer> containers = AprismRuntime.instance().getLoadedExtensionContainers();
+            assertThat(containers).hasSize(2);
+            assertThat(containers).extracting(LoadedExtensionContainer::getExtensionId)
+                    .containsExactlyInAnyOrder("ext1", "ext2");
+        }
+    }
+
     // ----- fixture helpers -----
 
     /**
@@ -425,11 +560,42 @@ class AprismRuntimeTest {
                   "loaderRange": "[1.0.0,2.0.0)",
                   "mcEdit": null,
                   "mcVersion": null,
-                  "entrypoint": "com.example.%sSupport",
+                  "entrypoint": null,
                   "provides": ["%s-loader"],
                   "depends": {}
                 }
-                """.formatted(loaderKey, loaderKey, loaderKey, loaderKey);
+                """.formatted(loaderKey, loaderKey, loaderKey);
+    }
+
+    /**
+     * Builds an extension manifest JSON with the given fields.
+     *
+     * @param extensionId the extension id
+     * @param type        the extension type (loader-support, api-extension, platform-adapter, converter)
+     * @param entrypoint  the entrypoint class (may be {@code null})
+     * @param loaderKey   the loader key (may be {@code null})
+     * @param loaderRange the loader version range (may be {@code null})
+     * @return the JSON content
+     */
+    private static String extensionJson(String extensionId, String type, String entrypoint,
+            String loaderKey, String loaderRange) {
+        String entryJson = entrypoint == null ? "null" : "\"" + entrypoint + "\"";
+        String loaderKeyJson = loaderKey == null ? "null" : "\"" + loaderKey + "\"";
+        String loaderRangeJson = loaderRange == null ? "null" : "\"" + loaderRange + "\"";
+        return """
+                {
+                  "extensionId": "%s",
+                  "type": "%s",
+                  "aprismRange": "[26.0.0,27.0.0)",
+                  "loaderKey": %s,
+                  "loaderRange": %s,
+                  "mcEdit": null,
+                  "mcVersion": null,
+                  "entrypoint": %s,
+                  "provides": [],
+                  "depends": {}
+                }
+                """.formatted(extensionId, type, loaderKeyJson, loaderRangeJson, entryJson);
     }
 
     /**

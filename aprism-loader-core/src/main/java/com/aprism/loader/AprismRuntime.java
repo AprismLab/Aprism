@@ -2,6 +2,7 @@ package com.aprism.loader;
 
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,8 +17,11 @@ import com.aprism.api.AprismContext;
 import com.aprism.api.AprismEventBus;
 import com.aprism.api.AprismPhase;
 import com.aprism.api.AprismRegistry;
+import com.aprism.api.ExtensionContext;
+import com.aprism.api.IAprismExtension;
 import com.aprism.api.IAprismMod;
 import com.aprism.api.ModContainer;
+import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.DependencyResolutionException;
 import com.aprism.manifest.DependencyResolver;
@@ -58,6 +62,8 @@ public final class AprismRuntime {
     private AprismRegistry registry;
     private EntryPointInvoker entryPointInvoker;
     private final Map<String, LoadedModContainer> mods = new LinkedHashMap<>();
+    private final Map<String, LoadedExtensionContainer> extensionContainers = new LinkedHashMap<>();
+    private Path extensionTempDir;
     private Instrumentation instrumentation;
 
     private String aprismVersion;
@@ -99,6 +105,7 @@ public final class AprismRuntime {
         this.extensionLoader = new ExtensionLoader(aprismVersion, mcEdit, mcVersion);
         this.mods.clear();
         this.loadedExtensions.clear();
+        this.extensionContainers.clear();
     }
 
     /**
@@ -114,21 +121,125 @@ public final class AprismRuntime {
     }
 
     /**
-     * Phase 1: scans the {@code aprism-extensions/} directory and loads every
-     * valid {@code .aep}. Loader-support extensions register their per-loader
-     * mod folders here, which phase 2 ({@link #loadMods(Path)}) consumes.
+     * Phase 1: scans the {@code aprism-extensions/} directory, loads every
+     * valid {@code .aep}, extracts embedded jars into the classloader, and
+     * invokes each extension's entrypoint ({@link IAprismExtension#onInitialize}).
+     *
+     * <p>Loader-support extensions register their per-loader mod folders
+     * here (either via manifest {@code loaderKey} or dynamically via
+     * {@link ExtensionContext#registerLoaderSupport}), which phase 2
+     * ({@link #loadMods(Path)}) consumes.
+     *
+     * <p>Extensions with no {@code entrypoint} field in their manifest are
+     * still registered (for manifest-driven loader-support) but their
+     * {@code onInitialize} is not invoked.
      *
      * @param extensionsDir the directory containing {@code .aep} files
-     * @return the list of loaded extensions
+     * @return the list of loaded extension containers (with instances populated)
      */
-    public List<ExtensionLoader.LoadedExtension> loadExtensions(Path extensionsDir) {
+    public List<LoadedExtensionContainer> loadExtensions(Path extensionsDir) {
         ensureInitialized();
         loadedExtensions.clear();
-        List<ExtensionLoader.LoadedExtension> result = extensionLoader.load(extensionsDir);
-        loadedExtensions.addAll(result);
-        LOG.info("Loaded " + result.size() + " Aprism extension(s); "
+        extensionContainers.clear();
+
+        // Phase 1a: validate and register manifest-driven loader-support folders
+        List<ExtensionLoader.LoadedExtension> raw = extensionLoader.load(extensionsDir);
+        loadedExtensions.addAll(raw);
+
+        // Phase 1b: extract embedded jars into the classloader
+        for (ExtensionLoader.LoadedExtension ext : raw) {
+            extractExtensionJars(ext.sourcePath());
+        }
+
+        // Phase 1c: instantiate entrypoints and invoke onInitialize
+        for (ExtensionLoader.LoadedExtension ext : raw) {
+            instantiateExtension(ext);
+        }
+
+        LOG.info("Loaded " + extensionContainers.size() + " Aprism extension(s); "
                 + extensionLoader.getLoaderFolders().size() + " loader-support folder(s) registered");
-        return List.copyOf(loadedExtensions);
+        return List.copyOf(extensionContainers.values());
+    }
+
+    /**
+     * Extracts all embedded jars from a {@code .aep} archive into a temporary
+     * directory and adds them to the classloader.
+     *
+     * @param aepFile the .aep archive path
+     */
+    private void extractExtensionJars(Path aepFile) {
+        try {
+            List<String> jarNames = extensionLoader.listEmbeddedJarNames(aepFile);
+            if (jarNames.isEmpty()) {
+                return;
+            }
+            Path tempDir = getExtensionTempDir();
+            String baseName = aepFile.getFileName().toString().replace(".aep", "");
+            for (String jarName : jarNames) {
+                String safeName = jarName.replace("/", "_");
+                Path target = tempDir.resolve(baseName + "_" + safeName);
+                extensionLoader.extractJar(aepFile, jarName, target);
+                classLoader.addModJar(target);
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to extract jars from " + aepFile + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Instantiates an extension's entrypoint class, wraps it in a
+     * {@link LoadedExtensionContainer}, and invokes
+     * {@link IAprismExtension#onInitialize} with a fresh
+     * {@link ExtensionContextImpl}.
+     *
+     * <p>If the manifest has no entrypoint, a container is still registered
+     * (with a null instance) so the extension's manifest-driven
+     * loader-support folder is honored.
+     *
+     * @param ext the raw loaded extension
+     */
+    private void instantiateExtension(ExtensionLoader.LoadedExtension ext) {
+        AprismExtensionManifest m = ext.manifest();
+        LoadedExtensionContainer container = new LoadedExtensionContainer(m, ext.sourcePath());
+        extensionContainers.put(m.extensionId(), container);
+
+        if (m.entrypoint() == null || m.entrypoint().isBlank()) {
+            return;
+        }
+        try {
+            Class<?> clazz = classLoader.loadClass(m.entrypoint());
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            container.setInstance(instance);
+
+            if (instance instanceof IAprismExtension extension) {
+                ExtensionContext context = new ExtensionContextImpl(
+                        container, eventBus, registry,
+                        (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                extension.onInitialize(context);
+            } else {
+                LOG.warning("Extension entrypoint " + m.entrypoint()
+                        + " does not implement IAprismExtension; skipping onInitialize");
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("Failed to instantiate extension entrypoint "
+                    + m.entrypoint() + " for " + m.extensionId(), e);
+        }
+    }
+
+    /**
+     * Lazily creates a temporary directory for extracted extension jars.
+     *
+     * @return the temp directory path
+     */
+    private Path getExtensionTempDir() {
+        if (extensionTempDir == null) {
+            try {
+                extensionTempDir = Files.createTempDirectory("aprism-extensions");
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to create extension temp directory", e);
+            }
+        }
+        return extensionTempDir;
     }
 
     /**
@@ -359,10 +470,27 @@ public final class AprismRuntime {
     }
 
     /**
-     * @return the loaded extensions (phase 1 output)
+     * @return the loaded extensions (raw manifests + source paths from phase 1)
      */
     public List<ExtensionLoader.LoadedExtension> getLoadedExtensions() {
         return List.copyOf(loadedExtensions);
+    }
+
+    /**
+     * @return the loaded extension containers (with instantiated entrypoints)
+     */
+    public List<LoadedExtensionContainer> getLoadedExtensionContainers() {
+        return List.copyOf(extensionContainers.values());
+    }
+
+    /**
+     * Returns the extension container for the given extension id.
+     *
+     * @param id the extension id
+     * @return the container, or {@code null} if no such extension is loaded
+     */
+    public LoadedExtensionContainer getExtension(String id) {
+        return extensionContainers.get(id);
     }
 
     /**
@@ -434,6 +562,30 @@ public final class AprismRuntime {
         instrumentation = null;
         mods.clear();
         loadedExtensions.clear();
+        extensionContainers.clear();
+        cleanupExtensionTempDir();
+    }
+
+    /**
+     * Deletes the temporary directory used for extracted extension jars.
+     */
+    private void cleanupExtensionTempDir() {
+        if (extensionTempDir == null) {
+            return;
+        }
+        try (var stream = Files.walk(extensionTempDir)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                  .forEach(p -> {
+                      try {
+                          Files.deleteIfExists(p);
+                      } catch (IOException ignored) {
+                          // best-effort cleanup
+                      }
+                  });
+        } catch (IOException e) {
+            LOG.warning("Failed to clean extension temp directory: " + e.getMessage());
+        }
+        extensionTempDir = null;
     }
 
     /**
