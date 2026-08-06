@@ -61,7 +61,9 @@ public final class AprismRuntime {
     private AprismEventBus eventBus;
     private AprismRegistry registry;
     private EntryPointInvoker entryPointInvoker;
+    private AprismClassTransformer transformer;
     private final Map<String, LoadedModContainer> mods = new LinkedHashMap<>();
+    private final Map<String, LoadedBedrockModContainer> bedrockMods = new LinkedHashMap<>();
     private final Map<String, LoadedExtensionContainer> extensionContainers = new LinkedHashMap<>();
     private Path extensionTempDir;
     private Instrumentation instrumentation;
@@ -97,13 +99,14 @@ public final class AprismRuntime {
         this.aprismVersion = aprismVersion;
         this.mcEdit = mcEdit;
         this.mcVersion = mcVersion;
-        AprismClassTransformer transformer = new AprismClassTransformer();
+        this.transformer = new AprismClassTransformer();
         this.classLoader = new AprismClassLoader(getClass().getClassLoader(), transformer);
         this.eventBus = new AprismEventBusImpl();
         this.registry = new SimpleRegistry();
         this.entryPointInvoker = new EntryPointInvoker(classLoader);
         this.extensionLoader = new ExtensionLoader(aprismVersion, mcEdit, mcVersion);
         this.mods.clear();
+        this.bedrockMods.clear();
         this.loadedExtensions.clear();
         this.extensionContainers.clear();
         // Bootstrap the SpongePowered Mixin environment so that @Mixin/@Inject
@@ -296,20 +299,30 @@ public final class AprismRuntime {
             mods.put(container.getId(), container);
             // Register the mod's mixin configs (if any) with the Mixin environment
             registerMixins(dm.manifest());
+            // Register the mod's access widener (if any) with the transformer
+            registerAccessWidener(dm.manifest(), dm.path());
         }
         LOG.info("Loaded " + mods.size() + " mod(s) across " + (loaderFolders.size() + 1) + " folder(s)");
     }
 
     /**
-     * Convenience entry point that runs both phases in order.
+     * Convenience entry point that runs both phases in order. Automatically
+     * branches between JE and BE loading based on the {@code mcEdit} bound
+     * at initialization: JE runs {@link #loadMods} (scans {@code mods/} +
+     * loader folders), BE runs {@link #loadBedrockMods} (scans
+     * {@code aprism_mods/}).
      *
      * @param gameRoot      the game instance root
      * @param extensionsDir the extensions directory (may be absent)
-     * @throws DependencyResolutionException if dependencies cannot be resolved
+     * @throws DependencyResolutionException if dependencies cannot be resolved (JE only)
      */
     public void performLoad(Path gameRoot, Path extensionsDir) throws DependencyResolutionException {
         loadExtensions(extensionsDir);
-        loadMods(gameRoot);
+        if ("BE".equalsIgnoreCase(mcEdit)) {
+            loadBedrockMods(gameRoot);
+        } else {
+            loadMods(gameRoot);
+        }
     }
 
     /**
@@ -328,6 +341,38 @@ public final class AprismRuntime {
             LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
             mods.put(container.getId(), container);
         }
+    }
+
+    /**
+     * Phase 2 (BE): scans the {@code aprism_mods/} directory under the given
+     * game root for {@code .abe} mod archives, parses their manifests, and
+     * registers each as a {@link LoadedBedrockModContainer}.
+     *
+     * <p>Per FACT.md 9.16, BE mods do NOT use the Java classloader. They
+     * consist of native binaries, Script API sources, and BP/RP content.
+     * This method discovers and validates the mods; the actual native loading
+     * is performed by the platform-specific Aprism injector which consumes
+     * the {@link LoadedBedrockModContainer#nativeLibraries()} map.
+     *
+     * <p>BE version support starts from 26.x only. Mods whose manifest
+     * declares a pre-26.x BE version are still loaded (version validation
+     * against the running BE version is the injector's responsibility, since
+     * it holds the signature DB).
+     *
+     * @param gameRoot the BE game root (typically {@code com.mojang/})
+     */
+    public void loadBedrockMods(Path gameRoot) {
+        ensureInitialized();
+        bedrockMods.clear();
+        BedrockModDiscoverer discoverer = new BedrockModDiscoverer();
+        List<BedrockModDiscoverer.DiscoveredBedrockMod> discovered = discoverer.discover(gameRoot);
+        for (BedrockModDiscoverer.DiscoveredBedrockMod dm : discovered) {
+            LoadedBedrockModContainer container = new LoadedBedrockModContainer(
+                    dm.manifest(), dm.archivePath(), dm.nativeLibraries(),
+                    dm.hasBehaviorPack(), dm.hasResourcePack(), dm.hasScripts());
+            bedrockMods.put(container.getId(), container);
+        }
+        LOG.info("Loaded " + bedrockMods.size() + " BE mod(s) from aprism_mods/");
     }
 
     /**
@@ -525,6 +570,23 @@ public final class AprismRuntime {
     }
 
     /**
+     * @return all loaded Bedrock mod containers (BE mode only)
+     */
+    public List<LoadedBedrockModContainer> getBedrockMods() {
+        return List.copyOf(bedrockMods.values());
+    }
+
+    /**
+     * Returns the Bedrock mod container for the given id.
+     *
+     * @param id the mod id
+     * @return the container, or {@code null} if no such BE mod is loaded
+     */
+    public LoadedBedrockModContainer getBedrockMod(String id) {
+        return bedrockMods.get(id);
+    }
+
+    /**
      * Returns the loader key that loaded the given mod id.
      *
      * @param id the mod id
@@ -570,6 +632,28 @@ public final class AprismRuntime {
     }
 
     /**
+     * Reads the access widener file declared in a mod manifest and registers
+     * its rules with the {@link AprismClassTransformer}'s {@link AccessWidener}.
+     * The widener file is read from inside the mod archive (.{@code aje} or
+     * {@code .jar}) at the path specified by the manifest's
+     * {@code accessWidener} field.
+     *
+     * @param manifest the mod manifest (may have a null accessWidener field)
+     * @param modPath  the path to the mod archive
+     */
+    private void registerAccessWidener(AprismManifest manifest, Path modPath) {
+        if (manifest == null || manifest.accessWidener() == null || manifest.accessWidener().isBlank()) {
+            return;
+        }
+        if (transformer == null) {
+            return;
+        }
+        transformer.getAccessWidener().parseFromArchive(modPath, manifest.accessWidener());
+        LOG.info("Registered access widener: " + manifest.accessWidener()
+                + " from mod " + manifest.id());
+    }
+
+    /**
      * @return whether the SpongePowered Mixin environment has been bootstrapped
      *         and a transformer is available for class transformation
      */
@@ -599,9 +683,11 @@ public final class AprismRuntime {
         eventBus = null;
         registry = null;
         entryPointInvoker = null;
+        transformer = null;
         extensionLoader = null;
         instrumentation = null;
         mods.clear();
+        bedrockMods.clear();
         loadedExtensions.clear();
         extensionContainers.clear();
         cleanupExtensionTempDir();
