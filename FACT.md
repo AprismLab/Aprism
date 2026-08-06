@@ -101,43 +101,27 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - [DONE] Updated all 16 docs (EN+ZH) + build.gradle: fixed versioning remnants, added Aprism Extensions (.aep) architecture, per-loader mod folder scheme (/mods, /fabric-mods, etc.), BE 26.x-only support scope, Aprism native superset principle.
 - [DONE] Commit doc architecture update to GitHub (60721ed).
 - [IN PROGRESS] Implementation phase begins. Priority: JE 26.2/26.1.2/1.21.10/1.21.4/1.16.5, BE 26.2/26.1.2.
+- [DONE] Fixed compilation: build.gradle, fallback readers, EventBus signatures, Gradle wrapper 9.5.1.
+- [DONE] Phase 0a: aprism-api - IAprismMod, AprismContext, AprismPhase, AprismEventBus/Event/EventListener, ModContainer/Metadata, Environment, AprismRegistry, Registry/BlockRegistry/ItemRegistry, IAprismExtension, ExtensionContext, ExtensionContainer, ExtensionType.
+- [DONE] Phase 0b: aprism-manifest - AprismManifest, AprismExtensionManifest, ManifestParser, ManifestValidator, DependencyResolver, VersionRange, FabricManifestReader, NeoForgeManifestReader, ManifestException hierarchy.
+- [DONE] Phase 0c (partial): aprism-loader-core - AprismAgent, AprismRuntime, AprismClassLoader, AprismClassTransformer, ModDiscoverer, EntryPointInvoker, AprismEventBusImpl, ExtensionLoader.
+- [DONE] Phase 0d (partial): aprism-packaging - AprismPackagingPlugin, AprismPackagingExtension, PackageAjeTask, PackageAbeTask, PackageAepTask.
+- [TODO] Implement two-phase loading in AprismRuntime (extension scan -> mod scan).
+- [TODO] Add ModDiscoverer per-loader folder scanning.
+- [TODO] Add tests for ExtensionLoader and VersionRange.
 
-## 7a. Implementation Plan (v26.0-Alpha.1-Phase0)
-
-Implementation order (dependency-driven):
-
-### Phase 0a: aprism-api (foundation)
-- IAprismMod lifecycle interface + AprismContext
-- AprismPhase enum (PREINIT/INIT/SETUP/COMPLETE/CLIENT/SERVER)
-- AprismEventBus + AprismEvent + AprismEventListener
-- ModContainer + ModMetadata
-- Environment (JE/BE, client/server, MC version)
-- Registry system (Registry<T>, BlockRegistry, ItemRegistry)
-- IAprismExtension interface + ExtensionContext (for .aep extensions)
-- VersionRange (SemVer range parsing/matching)
-
-### Phase 0b: aprism-manifest (manifest parsing)
-- AprismManifest data model (aprism.manifest.json schema)
-- AprismExtensionManifest data model (aprism.extension.json schema)
-- ManifestParser (Gson-based JSON parsing)
-- ManifestValidator (schema validation, 21 CHKAPRISM rules)
-- DependencyResolver (topological sort, conflict detection)
-- Fallback readers: FabricManifestReader, NeoForgeManifestReader
-
-### Phase 0c: aprism-loader-core (javaagent runtime)
-- AprismAgent (premain/agentmain entry)
-- AprismRuntime (bootstrap: extension scan -> mod scan -> load)
-- ExtensionLoader (scan aprism-extensions/, validate ranges, register)
-- AprismClassLoader (Knot-style shared space + opt-in isolation)
-- AprismClassTransformer (ClassFileTransformer, Mixin downstream)
-- ModDiscoverer (scan mods/ for .aje, <loader>-mods/ for .jar/.litemod)
-- EntryPointInvoker (invoke IAprismMod lifecycle)
-
-### Phase 0d: aprism-packaging (Gradle plugin)
-- AprismPackagingPlugin + AprismPackagingExtension
-- PackageAjeTask (.aje ZIP assembly)
-- PackageAbeTask (.abe ZIP assembly)
-- PackageAepTask (.aep ZIP assembly)
+### Session 2026-08-07 (v26.0-Alpha.1-Phase0)
+- [DONE] Implemented two-phase loading in AprismRuntime: initialize(inst, aprismVersion, mcEdit, mcVersion) binds version metadata; loadExtensions(extensionsDir) is phase 1 (scans aprism-extensions/, validates .aep against running Aprism + MC version, registers loader-support folders); loadMods(gameRoot) is phase 2 (scans mods/ + every registered loader folder); performLoad(gameRoot, extensionsDir) runs both phases in order. Added getLoadedExtensions, getLoaderFolders, getMods, getLoaderKey accessors.
+- [DONE] Added ModDiscoverer per-loader folder scanning: new discoverAll(gameRoot, loaderFolders) entrypoint scans Aprism native mods/ plus every loader-support folder; DiscoveredMod record now carries loaderKey and loaderFolder; groupByLoader utility groups results by loader key. Legacy discover(modsDir) retained for single-folder Aprism-native scans.
+- [DONE] Updated AprismAgent to parse key=value;key=value agent args (aprismVersion, mcEdit, mcVersion) and pass them to AprismRuntime.initialize.
+- [DONE] Fixed ExtensionLoader.load accumulator bug: now resets loaded and loaderFolders on each call so repeated invocations return only the most recent scan's results (was incorrectly accumulating across calls).
+- [DONE] Added VersionRangeTest (aprism-manifest): 23 test cases across 9 nested groups covering any-version wildcard, comparators (>= > <= <), tilde, caret (including 0.x and 0.0.x), exact match, comma-AND, Maven bracket forms, prerelease ordering, error cases, and Aprism-specific use cases.
+- [DONE] Added ExtensionLoaderTest (aprism-loader-core): 14 test cases across 4 nested groups covering basic loading, version validation (Aprism range out/in, MC edition mismatch, MC version mismatch, null = any), loader-support folder registration (per-loader key -> folder name mapping, all 5 known loaders, non-loader-support does not register), and manifest validation (missing manifest, missing extensionId, invalid range, source path tracking). Builds synthetic .aep zip archives with aprism.extension.json.
+- [DONE] Added ModDiscovererTest (aprism-loader-core): 10 test cases across 3 nested groups covering native-only scan, per-loader scan (registered folder scanned, unregistered ignored, all loaders, missing folder skipped, groupByLoader), and single-folder scan. Builds synthetic .aje archives with aprism.manifest.json and Fabric/NeoForge mod jars.
+- [DONE] Verified full Gradle build + all tests pass (aprism-api, aprism-manifest, aprism-loader-core, aprism-packaging) on JDK 21 Temurin.
+- [TODO] Implement entrypoint invocation in AprismRuntime.invokeEntrypoints (currently a stub; EntryPointInvoker exists but is not wired).
+- [TODO] Wire DependencyResolver into the mod load pipeline (topological sort of discovered mods before classloader registration).
+- [TODO] Add AprismRuntimeTest covering the full two-phase load flow with synthetic .aep + .aje + .jar fixtures.
 
 ## 8. Open Questions / Risks
 
