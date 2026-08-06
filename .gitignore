@@ -1,0 +1,58 @@
+# Reference / research documents (not for distribution)
+其他AI助手生成的文档 仅供参考/
+
+# Documentation (local only, not for repo)
+docs/
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Java
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# Native build artifacts
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Aprism build outputs
+dist/
+out/
+bin/
+
+# Local config (keep templates, ignore local overrides)
+*.local.properties
+local.properties
+
+# Crash dumps
+dumps/
+crash-reports/
