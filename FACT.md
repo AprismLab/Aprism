@@ -93,7 +93,7 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - [DONE] Versioning correction: format is now `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>` with Phase internal-only. Updated FACT.md, gradle.properties, libs.versions.toml, README.md.
 - [DONE] Project skeleton: multi-module Gradle build (settings.gradle, root build.gradle, gradle.properties, libs.versions.toml) with 4 subprojects (aprism-api, aprism-manifest, aprism-loader-core, aprism-packaging).
 - [DONE] Java source skeleton: IAprismMod/AprismContext/AprismEventBus/AprismPhase (api), ManifestParser/AprismManifest/DependencyResolver/VersionRange (manifest), AprismAgent/AprismClassLoader/AprismClassTransformer/AprismRuntime (loader-core), AprismPackagingPlugin/PackageAjeTask/PackageAbeTask (packaging).
-- [TODO] Commit skeleton + versioning correction to GitHub.
+- [DONE] Commit skeleton + versioning correction to GitHub (3 conventional commits: fix(versioning), feat(build), docs).
 
 ## 8. Open Questions / Risks
 
