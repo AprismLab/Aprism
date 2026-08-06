@@ -101,26 +101,31 @@ public final class NeoForgeManifestReader {
 
     private static AprismManifest convert(Map<String, String> mods)
             throws ManifestException.ManifestParseException {
-        AprismManifest m = new AprismManifest();
-        m.schemaVersion = 1;
-        m.modId = mods.get("modId");
-        m.version = mods.getOrDefault("version", "");
-        m.displayName = mods.get("displayName");
-        m.description = mods.get("description");
-        // NeoForge is always dedicated-server-capable on the JE side.
-        m.environment = "*";
-        if (mods.containsKey("license")) {
-            m.custom = Map.of("license", mods.get("license"));
-        }
-        if (m.modId == null || m.modId.isBlank()) {
+        String modId = mods.get("modId");
+        String version = mods.getOrDefault("version", "");
+        String displayName = mods.get("displayName");
+        String description = mods.get("description");
+        String environment = "*";
+        Map<String, Object> custom = mods.containsKey("license")
+                ? Map.of("license", mods.get("license"))
+                : Map.of();
+
+        if (modId == null || modId.isBlank()) {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-005: neoforge.mods.toml [[mods]] missing 'modId'");
         }
-        if (m.version == null || m.version.isBlank()) {
+        if (version == null || version.isBlank()) {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-005: neoforge.mods.toml [[mods]] missing 'version'");
         }
-        return m;
+
+        return new AprismManifest(
+                1, modId, version,
+                displayName != null ? displayName : modId,
+                description != null ? description : "",
+                environment,
+                Map.of(), List.of(), Map.of(), Map.of(),
+                null, List.of(), custom);
     }
 
     private static String stripComment(String line) {

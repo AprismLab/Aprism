@@ -2,7 +2,8 @@ package com.aprism.manifest.fallback;
 
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.ManifestException;
-import com.aprism.manifest.ManifestParser;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,7 +21,7 @@ import java.util.Map;
  * Reads a Fabric {@code fabric.mod.json} and projects it into an
  * {@link AprismManifest}.
  *
- * <p>Maps: {@code id -> modId}, {@code version}, {@code name -> displayName},
+ * <p>Maps: {@code id -> id}, {@code version}, {@code name -> displayName},
  * {@code entrypoints}, {@code mixins}, {@code depends}, {@code accessWidener},
  * {@code environment}. The synthesized manifest is equivalent to an explicit
  * Aprism manifest for resolution and validation, per Document 2 section 5.
@@ -65,63 +67,67 @@ public final class FabricManifestReader {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-001: fabric.mod.json root is null");
         }
-        AprismManifest m = new AprismManifest();
-        m.schemaVersion = 1;
 
-        if (json.has("id")) {
-            m.modId = json.get("id").getAsString();
-        }
-        if (json.has("version")) {
-            m.version = json.get("version").getAsString();
-        }
-        if (json.has("name")) {
-            m.displayName = json.get("name").getAsString();
-        }
-        if (json.has("description")) {
-            m.description = json.get("description").getAsString();
-        }
-        if (json.has("authors")) {
-            m.authors = ManifestParser.readObjectMap(json, "authors") == null
-                    ? null : new ArrayList<>(ManifestParser.readObjectMap(json, "authors").values());
-        }
-        if (json.has("environment")) {
-            m.environment = json.get("environment").getAsString();
-        }
-        if (json.has("entrypoints")) {
-            m.entrypoints = readEntrypoints(json.getAsJsonObject("entrypoints"));
-        }
-        if (json.has("mixins")) {
-            m.mixins = new ArrayList<>();
-            json.getAsJsonArray("mixins").forEach(e -> m.mixins.add(e.isJsonObject() ? e.toString() : e.getAsString()));
-        }
-        m.depends = ManifestParser.readStringMap(json, "depends");
-        m.recommends = ManifestParser.readStringMap(json, "recommends");
-        m.suggests = ManifestParser.readStringMap(json, "suggests");
-        m.breaks = ManifestParser.readStringMap(json, "breaks");
-        m.conflicts = ManifestParser.readStringMap(json, "conflicts");
-        if (json.has("accessWidener")) {
-            m.accessWidener = json.get("accessWidener").getAsString();
-        }
-        m.provides = ManifestParser.readStringList(json, "provides");
+        String id = json.has("id") ? json.get("id").getAsString() : null;
+        String version = json.has("version") ? json.get("version").getAsString() : null;
+        String displayName = json.has("name") ? json.get("name").getAsString() : id;
+        String description = json.has("description") ? json.get("description").getAsString() : "";
+        String environment = json.has("environment") ? json.get("environment").getAsString() : "*";
+        String accessWidener = json.has("accessWidener") ? json.get("accessWidener").getAsString() : null;
 
-        if (m.modId == null || m.modId.isBlank()) {
+        Map<String, List<String>> entrypoints = json.has("entrypoints")
+                ? readEntrypoints(json.getAsJsonObject("entrypoints"))
+                : Map.of();
+
+        List<String> mixins = json.has("mixins") ? readStringList(json.getAsJsonArray("mixins")) : List.of();
+        Map<String, String> depends = json.has("depends") ? readStringMap(json.getAsJsonObject("depends")) : Map.of();
+        List<String> provides = json.has("provides") ? readStringList(json.getAsJsonArray("provides")) : List.of();
+
+        if (id == null || id.isBlank()) {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-005: fabric.mod.json missing 'id'");
         }
-        if (m.version == null || m.version.isBlank()) {
+        if (version == null || version.isBlank()) {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-005: fabric.mod.json missing 'version'");
         }
-        return m;
+
+        return new AprismManifest(
+                1, id, version, displayName, description, environment,
+                entrypoints, mixins, depends, Map.of(),
+                accessWidener, provides, Map.of());
     }
 
     private static Map<String, List<String>> readEntrypoints(JsonObject entrypoints) {
-        Map<String, List<String>> out = new java.util.HashMap<>();
+        Map<String, List<String>> out = new HashMap<>();
         for (String phase : entrypoints.keySet()) {
-            List<String> specs = ManifestParser.readStringList(entrypoints, phase);
-            if (specs != null) {
-                out.put(phase, specs);
+            JsonElement element = entrypoints.get(phase);
+            if (element.isJsonArray()) {
+                out.put(phase, readStringList(element.getAsJsonArray()));
+            } else if (element.isJsonPrimitive()) {
+                out.put(phase, List.of(element.getAsString()));
             }
+        }
+        return out;
+    }
+
+    private static List<String> readStringList(JsonArray array) {
+        List<String> out = new ArrayList<>();
+        for (JsonElement element : array) {
+            if (element.isJsonObject()) {
+                out.add(element.toString());
+            } else {
+                out.add(element.getAsString());
+            }
+        }
+        return out;
+    }
+
+    private static Map<String, String> readStringMap(JsonObject object) {
+        Map<String, String> out = new HashMap<>();
+        for (String key : object.keySet()) {
+            JsonElement element = object.get(key);
+            out.put(key, element.isJsonPrimitive() ? element.getAsString() : element.toString());
         }
         return out;
     }

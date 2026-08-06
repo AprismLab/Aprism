@@ -121,7 +121,7 @@ public final class AprismRuntime {
 
         @Override
         @SuppressWarnings("unchecked")
-        public <E extends AprismEvent> void post(AprismEvent event) {
+        public void post(AprismEvent event) {
             List<AprismEventListener<?>> l = listeners.get(event.getClass());
             if (l != null) {
                 for (AprismEventListener<?> listener : l) {

@@ -35,7 +35,6 @@ public interface AprismEventBus {
      * Posts an event to all registered listeners for its type.
      *
      * @param event the event to post
-     * @param <E> the event type
      */
-    <E extends AprismEvent> void post(AprismEvent event);
+    void post(AprismEvent event);
 }

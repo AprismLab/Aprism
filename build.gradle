@@ -2,16 +2,20 @@
 // Version: v26.0-Alpha.1
 // Author: BlockConnect@StarsailsClover
 
-plugins {
-    id 'java-library' apply false
-}
-
 // Apply common conventions to all subprojects
 subprojects {
     apply plugin: 'java-library'
 
     group = project.aprismGroup
     version = project.aprismVersion
+
+    repositories {
+        mavenCentral()
+        mavenLocal()
+        maven { url = 'https://maven.fabricmc.net' }
+        maven { url = 'https://maven.neoforged.net/releases' }
+        maven { url = 'https://maven.architectury.dev/' }
+    }
 
     // JDK 25 for 26.1+ profile
     java {
@@ -30,6 +34,10 @@ subprojects {
     // Test settings
     tasks.named('test') {
         useJUnitPlatform()
+    }
+
+    dependencies {
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
     }
 
     // Repositories inherited from settings.gradle dependencyResolutionManagement

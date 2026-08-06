@@ -99,7 +99,45 @@ Phase (0-9) is an internal granular development stage tracker, NOT shown in publ
 - [DONE] Designed per-loader mod folder separation: /mods (Aprism native .aje), /fabric-mods, /neoforge-mods, /forge-mods, /quilt-mods, /liteloader-mods.
 - [DONE] Defined priority version targets: JE 26.2/26.1.2/1.21.10/1.21.4/1.16.5, BE 26.2/26.1.2 (BE only from 26.x).
 - [DONE] Updated all 16 docs (EN+ZH) + build.gradle: fixed versioning remnants, added Aprism Extensions (.aep) architecture, per-loader mod folder scheme (/mods, /fabric-mods, etc.), BE 26.x-only support scope, Aprism native superset principle.
-- [TODO] Commit doc architecture update to GitHub.
+- [DONE] Commit doc architecture update to GitHub (60721ed).
+- [IN PROGRESS] Implementation phase begins. Priority: JE 26.2/26.1.2/1.21.10/1.21.4/1.16.5, BE 26.2/26.1.2.
+
+## 7a. Implementation Plan (v26.0-Alpha.1-Phase0)
+
+Implementation order (dependency-driven):
+
+### Phase 0a: aprism-api (foundation)
+- IAprismMod lifecycle interface + AprismContext
+- AprismPhase enum (PREINIT/INIT/SETUP/COMPLETE/CLIENT/SERVER)
+- AprismEventBus + AprismEvent + AprismEventListener
+- ModContainer + ModMetadata
+- Environment (JE/BE, client/server, MC version)
+- Registry system (Registry<T>, BlockRegistry, ItemRegistry)
+- IAprismExtension interface + ExtensionContext (for .aep extensions)
+- VersionRange (SemVer range parsing/matching)
+
+### Phase 0b: aprism-manifest (manifest parsing)
+- AprismManifest data model (aprism.manifest.json schema)
+- AprismExtensionManifest data model (aprism.extension.json schema)
+- ManifestParser (Gson-based JSON parsing)
+- ManifestValidator (schema validation, 21 CHKAPRISM rules)
+- DependencyResolver (topological sort, conflict detection)
+- Fallback readers: FabricManifestReader, NeoForgeManifestReader
+
+### Phase 0c: aprism-loader-core (javaagent runtime)
+- AprismAgent (premain/agentmain entry)
+- AprismRuntime (bootstrap: extension scan -> mod scan -> load)
+- ExtensionLoader (scan aprism-extensions/, validate ranges, register)
+- AprismClassLoader (Knot-style shared space + opt-in isolation)
+- AprismClassTransformer (ClassFileTransformer, Mixin downstream)
+- ModDiscoverer (scan mods/ for .aje, <loader>-mods/ for .jar/.litemod)
+- EntryPointInvoker (invoke IAprismMod lifecycle)
+
+### Phase 0d: aprism-packaging (Gradle plugin)
+- AprismPackagingPlugin + AprismPackagingExtension
+- PackageAjeTask (.aje ZIP assembly)
+- PackageAbeTask (.abe ZIP assembly)
+- PackageAepTask (.aep ZIP assembly)
 
 ## 8. Open Questions / Risks
 
