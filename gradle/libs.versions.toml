@@ -6,8 +6,8 @@
 # Aprism (public: v<Year>.<minor>[-Alpha.<n>])
 aprism = "v26.0-Alpha.1"
 
-# Minecraft / Mappings
-minecraft = "1.21.4"
+# Minecraft / Mappings (Alpha 1 target: 26.2, unobfuscated, no remap)
+minecraft = "26.2"
 
 # JE Mod Loaders (compatibility targets)
 fabric-loader = "0.16.14"
