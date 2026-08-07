@@ -29,6 +29,9 @@ jobs:
       - name: Build and test
         run: ./gradlew build --console=plain
 
+      - name: Assemble fat agent jar
+        run: ./gradlew :aprism-loader-core:shadowJar --console=plain
+
       - name: Assemble artifacts
         shell: pwsh
         run: |
