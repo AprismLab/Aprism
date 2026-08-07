@@ -25,6 +25,11 @@ import com.aprism.api.ExtensionContext;
 import com.aprism.api.IAprismExtension;
 import com.aprism.api.IAprismMod;
 import com.aprism.api.ModContainer;
+import com.aprism.loader.remap.BytecodeRemapper;
+import com.aprism.loader.remap.McProfile;
+import com.aprism.loader.remap.Remapper;
+import com.aprism.loader.remap.TinyMappings;
+import com.aprism.loader.remap.TinyRemapper;
 import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.DependencyResolutionException;
@@ -77,6 +82,9 @@ public final class AprismRuntime {
     private String mcVersion;
     private ExtensionLoader extensionLoader;
     private final List<ExtensionLoader.LoadedExtension> loadedExtensions = new ArrayList<>();
+
+    private McProfile mcProfile;
+    private BytecodeRemapper bytecodeRemapper;
 
     private AprismRuntime() {
     }
@@ -137,11 +145,74 @@ public final class AprismRuntime {
         this.bedrockMods.clear();
         this.loadedExtensions.clear();
         this.extensionContainers.clear();
+
+        // Select the cross-version profile from the Minecraft version. For the
+        // no-remap profile (26.1+) the bytecode remapper stays null and the
+        // classloader behaves as a plain shared class space. For the remapped
+        // profile (pre-26.1), the remapper is installed later via
+        // {@link #loadIntermediaryMappings} once the intermediary mappings are
+        // located.
+        this.mcProfile = McProfile.of(mcVersion);
+        this.bytecodeRemapper = null;
+        this.classLoader.setBytecodeRemapper(null);
+
         // Bootstrap the SpongePowered Mixin environment so that @Mixin/@Inject
         // annotations declared by loaded mods are applied via the transformer.
         // The bootstrap is fully fault-tolerant: any failure is logged and
         // swallowed so a broken Mixin environment never blocks game startup.
         AprismMixinBootstrap.bootstrap(classLoader);
+    }
+
+    /**
+     * Loads Fabric Intermediary (tiny v2) mappings and installs the resulting
+     * intermediary→official bytecode remapper onto the classloader. Only
+     * meaningful for the {@link McProfile#REMAPPED} profile (Minecraft pre-26.1);
+     * for the no-remap profile this is a logged no-op.
+     *
+     * <p>Mods are compiled against Intermediary names; pre-26.1 game jars use
+     * obfuscated official names, so mod bytecode must be remapped at define
+     * time for its references to resolve.
+     *
+     * @param tinyV2File the tiny v2 mappings file (official → intermediary [→ named])
+     * @throws IOException if the mappings cannot be read
+     */
+    public void loadIntermediaryMappings(Path tinyV2File) throws IOException {
+        ensureInitialized();
+        if (mcProfile != McProfile.REMAPPED) {
+            LOG.info("Profile is NO_REMAP for Minecraft " + mcVersion
+                    + "; intermediary mappings ignored");
+            return;
+        }
+        TinyMappings mappings = TinyMappings.parse(tinyV2File);
+        Remapper intermediaryToOfficial = TinyRemapper.intermediaryToOfficial(mappings);
+        this.bytecodeRemapper = BytecodeRemapper.of(intermediaryToOfficial);
+        this.classLoader.setBytecodeRemapper(this.bytecodeRemapper);
+        LOG.info("Loaded intermediary mappings from " + tinyV2File + ": "
+                + mappings.classCount() + " classes, "
+                + mappings.methodCount() + " methods, "
+                + mappings.fieldCount() + " fields");
+    }
+
+    /**
+     * @return the cross-version profile selected for the running Minecraft version
+     */
+    public McProfile getMcProfile() {
+        return mcProfile;
+    }
+
+    /**
+     * @return the shared mod classloader, or {@code null} before initialization
+     */
+    public AprismClassLoader getClassLoader() {
+        return classLoader;
+    }
+
+    /**
+     * @return the installed bytecode remapper, or {@code null} when remapping
+     *         is not active (no-remap profile or mappings not yet loaded)
+     */
+    public BytecodeRemapper getBytecodeRemapper() {
+        return bytecodeRemapper;
     }
 
     /**
@@ -781,6 +852,8 @@ public final class AprismRuntime {
         transformer = null;
         extensionLoader = null;
         instrumentation = null;
+        mcProfile = null;
+        bytecodeRemapper = null;
         mods.clear();
         bedrockMods.clear();
         loadedExtensions.clear();

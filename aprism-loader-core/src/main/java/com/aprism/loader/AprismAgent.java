@@ -80,6 +80,14 @@ public final class AprismAgent {
                     kv.get("mcEdit"),
                     kv.get("mcVersion"));
 
+            // Remapped profile (pre-26.1): load Fabric Intermediary mappings so
+            // that mod bytecode is remapped intermediary -> official at define
+            // time. The mappings file is supplied via the `mappings` agent arg.
+            String mappingsArg = kv.get("mappings");
+            if (mappingsArg != null && !mappingsArg.isBlank()) {
+                runtime.loadIntermediaryMappings(Path.of(mappingsArg));
+            }
+
             // Production trigger: when gameRoot is supplied, run the two-phase
             // load and the common lifecycle synchronously inside premain.
             String gameRootArg = kv.get("gameRoot");
