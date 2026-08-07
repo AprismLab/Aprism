@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test (root)
+        run: ./gradlew build --console=plain
+
+      - name: Test packaging plugin (included build)
+        run: ./gradlew -p aprism-packaging test --console=plain
+
+      - name: Assemble fat agent jar
+        run: ./gradlew :aprism-loader-core:shadowJar --console=plain
+
+      - name: Upload agent artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aprism-agent-jar
+          path: aprism-loader-core/build/libs/Aprism-*.jar
+          if-no-files-found: error
