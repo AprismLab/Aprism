@@ -50,18 +50,29 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem dist/Aprism-*.jar | ForEach-Object {
-            cosign sign-blob --yes --bundle "$($_.Name).bundle" --output-signature "$($_.Name).sig" $_.FullName
+            cosign sign-blob --yes `
+              --bundle "dist/$($_.Name).bundle" `
+              --output-signature "dist/$($_.Name).sig" $_.FullName
           }
 
-      - name: Generate SBOM (CycloneDX)
-        uses: CycloneDX/cdxgen-action@v1
+      - name: Setup Node for cdxgen
+        uses: actions/setup-node@v4
         with:
-          args: >-
-            -t java
-            --project-name Aprism
-            --project-version ${{ github.ref_name }}
-            -o dist/Aprism-sbom.cdx.json
-        continue-on-error: true
+          node-version: '20'
+
+      - name: Generate SBOM (CycloneDX)
+        shell: pwsh
+        run: |
+          npm install -g @cyclonedx/cdxgen
+          cdxgen -t java --project-name Aprism --project-version "${{ github.ref_name }}" -o dist/Aprism-sbom.cdx.json
+
+      - name: Delete existing release (if any)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "${{ github.ref_name }}" --yes 2>$null
+          exit 0
 
       - name: Create Pre-Release
         shell: pwsh
