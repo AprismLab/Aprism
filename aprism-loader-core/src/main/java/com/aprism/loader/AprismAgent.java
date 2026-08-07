@@ -1,6 +1,11 @@
 package com.aprism.loader;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.instrument.Instrumentation;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -10,10 +15,15 @@ import java.util.Map;
  * {@link AprismRuntime}.
  *
  * <p>Agent arguments carry the version metadata required for extension and mod
- * validation. The format is {@code key=value;key=value;...}, e.g.
- * {@code aprismVersion=26.0-Alpha.1;mcEdit=JE;mcVersion=1.21.4}. Unspecified
- * keys default to {@code null}, which disables the corresponding validation
- * (used in tests).
+ * validation, plus the game root used for production loading. The format is
+ * {@code key=value;key=value;...}, e.g.
+ * {@code aprismVersion=v26.0-Alpha.1;mcEdit=JE;mcVersion=26.2;gameRoot=/path/to/.minecraft}.
+ * Unspecified keys default to {@code null}, which disables the corresponding
+ * validation (used in tests). When {@code gameRoot} is present, the agent
+ * performs the production bootstrap (two-phase load + common lifecycle).
+ * Any failure is logged and swallowed so the game JVM keeps starting; a crash
+ * report is written to {@code <gameRoot>/aprism-crashes/} on a best-effort
+ * basis.
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -45,30 +55,85 @@ public final class AprismAgent {
     }
 
     /**
-     * Registers the class transformer and initializes the runtime with the
-     * version metadata parsed from the agent arguments.
+     * Registers the class transformer with the JVM, initializes the runtime
+     * sharing that same transformer instance, and (when a {@code gameRoot}
+     * argument is present) performs the production bootstrap: two-phase load
+     * followed by the common lifecycle dispatch.
+     *
+     * <p>Everything is wrapped in a catch-all so that a broken Aprism boot
+     * never terminates the game JVM. Failures are logged and a crash report
+     * is written next to the game directory.
      *
      * @param inst the instrumentation handle
      * @param args the agent arguments (may be {@code null} or empty)
      */
     private static void initialize(Instrumentation inst, String args) {
         Map<String, String> kv = parseArgs(args);
-        AprismClassTransformer transformer = new AprismClassTransformer();
-        inst.addTransformer(transformer, true);
-        AprismRuntime.instance().initialize(
-                inst,
-                kv.get("aprismVersion"),
-                kv.get("mcEdit"),
-                kv.get("mcVersion"));
+        try {
+            AprismClassTransformer transformer = new AprismClassTransformer();
+            inst.addTransformer(transformer, true);
+            AprismRuntime runtime = AprismRuntime.instance();
+            runtime.initialize(
+                    inst,
+                    transformer,
+                    kv.get("aprismVersion"),
+                    kv.get("mcEdit"),
+                    kv.get("mcVersion"));
+
+            // Production trigger: when gameRoot is supplied, run the two-phase
+            // load and the common lifecycle synchronously inside premain.
+            String gameRootArg = kv.get("gameRoot");
+            if (gameRootArg != null && !gameRootArg.isBlank()) {
+                runtime.bootstrapProduction(Path.of(gameRootArg));
+            }
+        } catch (Throwable t) {
+            // Never terminate the game JVM from the agent. Record the failure
+            // and continue; the game launches without (or with partial) Aprism.
+            java.util.logging.Logger.getLogger("AprismAgent").severe(
+                    "Aprism failed to initialize: " + t);
+            writeCrashReport(kv.get("gameRoot"), t);
+        }
     }
 
     /**
-     * Parses the agent argument string into a key/value map.
+     * Best-effort crash report written to {@code <gameRoot>/aprism-crashes/}
+     * (or the working directory when no game root is known) so that a failed
+     * Aprism boot leaves an actionable trace. Never throws.
      *
-     * @param args the raw argument string
+     * @param gameRootArg the game root argument (may be {@code null})
+     * @param t           the failure cause
+     */
+    private static void writeCrashReport(String gameRootArg, Throwable t) {
+        try {
+            StringWriter sw = new StringWriter();
+            t.printStackTrace(new PrintWriter(sw));
+            String report = "Aprism Loader crash report\n"
+                    + "==========================\n"
+                    + sw;
+            Path reportPath;
+            if (gameRootArg != null && !gameRootArg.isBlank()) {
+                Path dir = Path.of(gameRootArg).resolve("aprism-crashes");
+                Files.createDirectories(dir);
+                reportPath = dir.resolve("aprism-crash-" + System.currentTimeMillis() + ".txt");
+            } else {
+                reportPath = Path.of("aprism-crash-" + System.currentTimeMillis() + ".txt");
+            }
+            Files.writeString(reportPath, report);
+            java.util.logging.Logger.getLogger("AprismAgent").warning(
+                    "Aprism crash report written to " + reportPath);
+        } catch (IOException | RuntimeException ignored) {
+            // best-effort only
+        }
+    }
+
+    /**
+     * Parses the agent argument string into a key/value map. Package-private
+     * for direct testing.
+     *
+     * @param args the raw agent arguments
      * @return the parsed key/value pairs (never {@code null})
      */
-    private static Map<String, String> parseArgs(String args) {
+    static Map<String, String> parseArgs(String args) {
         Map<String, String> kv = new HashMap<>();
         if (args == null || args.isBlank()) {
             return kv;

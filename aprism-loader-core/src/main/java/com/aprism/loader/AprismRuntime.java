@@ -87,19 +87,43 @@ public final class AprismRuntime {
     /**
      * Initializes the runtime with version metadata and the instrumentation
      * handle. The version triple is used to validate extensions and mods
-     * against the running Aprism + Minecraft version.
+     * against the running Aprism + Minecraft version. The runtime creates its
+     * own {@link AprismClassTransformer}; use
+     * {@link #initialize(Instrumentation, AprismClassTransformer, String, String, String)}
+     * from the agent so that the transformer registered with the JVM is the
+     * same instance that receives access-widener rules.
      *
-     * @param inst           the instrumentation handle
+     * @param inst           the instrumentation handle (may be {@code null} in tests)
      * @param aprismVersion  the running Aprism Loader version (e.g. {@code "26.0-Alpha.1"})
      * @param mcEdit         the Minecraft edition ({@code "JE"} or {@code "BE"})
-     * @param mcVersion      the running Minecraft version (e.g. {@code "1.21.4"})
+     * @param mcVersion      the running Minecraft version (e.g. {@code "26.2"})
      */
     public void initialize(Instrumentation inst, String aprismVersion, String mcEdit, String mcVersion) {
+        initialize(inst, null, aprismVersion, mcEdit, mcVersion);
+    }
+
+    /**
+     * Initializes the runtime with an externally created transformer. The
+     * agent uses this overload to share the single transformer instance that
+     * is registered with the JVM {@link Instrumentation}, so that
+     * access-widener rules registered during mod loading take effect on the
+     * production transformation path.
+     *
+     * @param inst                the instrumentation handle (may be {@code null} in tests)
+     * @param externalTransformer the transformer to use, or {@code null} to create a new one
+     * @param aprismVersion       the running Aprism Loader version
+     * @param mcEdit              the Minecraft edition ({@code "JE"} or {@code "BE"})
+     * @param mcVersion           the running Minecraft version
+     */
+    public void initialize(Instrumentation inst, AprismClassTransformer externalTransformer,
+            String aprismVersion, String mcEdit, String mcVersion) {
         this.instrumentation = inst;
         this.aprismVersion = aprismVersion;
         this.mcEdit = mcEdit;
         this.mcVersion = mcVersion;
-        this.transformer = new AprismClassTransformer();
+        this.transformer = externalTransformer != null
+                ? externalTransformer
+                : new AprismClassTransformer();
         this.classLoader = new AprismClassLoader(getClass().getClassLoader(), transformer);
         this.eventBus = new AprismEventBusImpl();
         this.registry = new SimpleRegistry();
@@ -111,6 +135,8 @@ public final class AprismRuntime {
         this.extensionContainers.clear();
         // Bootstrap the SpongePowered Mixin environment so that @Mixin/@Inject
         // annotations declared by loaded mods are applied via the transformer.
+        // The bootstrap is fully fault-tolerant: any failure is logged and
+        // swallowed so a broken Mixin environment never blocks game startup.
         AprismMixinBootstrap.bootstrap(classLoader);
     }
 
@@ -323,6 +349,23 @@ public final class AprismRuntime {
         } else {
             loadMods(gameRoot);
         }
+    }
+
+    /**
+     * Production bootstrap used by the agent's premain: performs the full
+     * two-phase load from the game root (extensions from
+     * {@code <gameRoot>/aprism-extensions}) and then drives the common
+     * lifecycle (PREINIT -> INIT -> SETUP -> COMPLETE). Distribution-specific
+     * CLIENT/SERVER phases are not dispatched here; game-event-driven phase
+     * dispatch is a later milestone.
+     *
+     * @param gameRoot the game instance root (e.g. the {@code .minecraft} directory)
+     * @throws DependencyResolutionException if dependencies cannot be resolved (JE only)
+     */
+    public void bootstrapProduction(Path gameRoot) throws DependencyResolutionException {
+        ensureInitialized();
+        performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+        invokeCommonLifecycle();
     }
 
     /**
@@ -612,7 +655,7 @@ public final class AprismRuntime {
      * @param manifest the mod manifest (may have a null or empty mixins list)
      */
     private void registerMixins(AprismManifest manifest) {
-        if (manifest == null || manifest.mixins() == null) {
+        if (manifest == null || manifest.mixins() == null || manifest.mixins().isEmpty()) {
             return;
         }
         for (String config : manifest.mixins()) {
@@ -623,11 +666,13 @@ public final class AprismRuntime {
     /**
      * Registers a mixin configuration with the Mixin environment. Exposed for
      * extensions and advanced callers that need to register mixin configs
-     * outside the normal mod-manifest flow.
+     * outside the normal mod-manifest flow. Re-binds the Mixin environment
+     * (idempotent) in case the caller skipped {@link #initialize}.
      *
      * @param configName the mixin config resource path (e.g. "mymod.mixins.json")
      */
     public void offerMixinConfig(String configName) {
+        AprismMixinBootstrap.bootstrap(classLoader);
         AprismMixinBootstrap.offerMixinConfig(configName);
     }
 
