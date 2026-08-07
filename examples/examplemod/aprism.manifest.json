@@ -9,9 +9,7 @@
     "main": ["com.example.ExampleMod"]
   },
   "mixins": [],
-  "depends": {
-    "aprism": ">=26.0-Alpha.1"
-  },
+  "depends": {},
   "platforms": {},
   "accessWidener": null,
   "provides": [],
