@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
+        run: ./gradlew build --console=plain
+
+      - name: Assemble artifacts
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "aprism-loader-core/build/libs/Aprism-$ver-JE-26.2.jar" "dist/"
+          Get-ChildItem dist | ForEach-Object {
+            (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name |
+              Add-Content dist/checksums.txt
+          }
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts (keyless)
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/Aprism-*.jar | ForEach-Object {
+            cosign sign-blob --yes --bundle "$($_.Name).bundle" --output-signature "$($_.Name).sig" $_.FullName
+          }
+
+      - name: Generate SBOM (CycloneDX)
+        uses: CycloneDX/cdxgen-action@v1
+        with:
+          args: >-
+            -t java
+            --project-name Aprism
+            --project-version ${{ github.ref_name }}
+            -o dist/Aprism-sbom.cdx.json
+        continue-on-error: true
+
+      - name: Create Pre-Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = "${{ github.ref_name }}"
+          $notes = @"
+          Aprism Loader $ver (Pre-Release)
+
+          Alpha build of the 2026 major line. Targets Minecraft Java Edition 26.2.
+
+          **Contents**
+          - ``Aprism-$ver-JE-26.2.jar``: the self-contained javaagent (fat jar, dependencies relocated)
+          - ``checksums.txt``: SHA-256 of the artifact
+          - ``.sig`` / ``.bundle``: cosign keyless signatures (verify with ``cosign verify-blob``)
+
+          **Quick start**
+          ``````
+          java -javaagent:Aprism-$ver-JE-26.2.jar=aprismVersion=$ver;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
+          ``````
+
+          Place ``.aje`` mods in ``<game-dir>/mods/``. See docs/zh/08-开发者指南.md.
+          "@
+          gh release create $ver dist/* --prerelease --title $ver --notes $notes

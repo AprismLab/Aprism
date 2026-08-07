@@ -70,3 +70,6 @@ local.properties
 # Crash dumps
 dumps/
 crash-reports/
+
+# Local smoke-test logs
+logs/
