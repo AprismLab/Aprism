@@ -3,6 +3,7 @@
 
 plugins {
     id 'java-library'
+    alias(libs.plugins.shadow)
 }
 
 dependencies {
@@ -25,4 +26,33 @@ jar {
             'Implementation-Version': project.version
         )
     }
+}
+
+// Fat agent jar: self-contained javaagent with all runtime dependencies
+// shaded and relocated to avoid clashes with the Minecraft classpath.
+// com.aprism.api and the agent entrypoints are NOT relocated (public API).
+shadowJar {
+    archiveFileName = "Aprism-${project.version}-${project.minecraftEdition}-${project.minecraftVersion}.jar"
+    manifest {
+        attributes(
+            'Premain-Class': 'com.aprism.loader.AprismAgent',
+            'Agent-Class': 'com.aprism.loader.AprismAgent',
+            'Can-Redefine-Classes': 'true',
+            'Can-Retransform-Classes': 'true',
+            'Implementation-Version': project.version
+        )
+    }
+    relocate 'org.objectweb.asm', 'aprism.libs.asm'
+    relocate 'com.google.gson', 'aprism.libs.gson'
+    relocate 'org.spongepowered.asm', 'aprism.libs.mixin'
+    mergeServiceFiles()
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'module-info.class'
+    // Compile-time-only tooling from Mixin (annotation processor + ModLauncher SPI)
+    exclude 'org/spongepowered/tools/**'
+    exclude 'META-INF/services/javax.annotation.processing.Processor'
+    exclude 'META-INF/services/cpw.mods.modlauncher.*'
+    exclude 'META-INF/services/org.spongepowered.tools.obfuscation.service.IObfuscationService'
 }
