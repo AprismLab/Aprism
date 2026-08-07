@@ -13,7 +13,7 @@ The manifest is the single source of truth for: mod identity, version, environme
 
 ## 2. Design Principles
 
-1. **Superset, not replacement.** Every field that exists in `fabric.mod.json`, `neoforge.mods.toml`, `litemod.json`, and Bedrock `manifest.json` has a defined mapping into `aprism.manifest.json`. A mod authored against any single legacy format remains loadable.
+1. **Superset, not replacement.** Every field that exists in `fabric.mod.json`, `quilt.mod.json`, `neoforge.mods.toml`, `mods.toml`, `litemod.json`, and Bedrock `manifest.json` has a defined mapping into `aprism.manifest.json`. A mod authored against any single legacy format remains loadable.
 2. **Auto-discovery fallback.** When `aprism.manifest.json` is not present in a pack, Aprism probes for legacy manifests in a defined order (see Section 5) and synthesizes an in-memory Aprism manifest. The synthesized manifest is equivalent to an explicit one for all resolution and validation purposes, except it cannot carry Aprism-only fields.
 3. **Edition-aware.** JE packs (`.aje`) and BE packs (`.abe`) use the same file name but a different top-level shape. JE manifests are flat JSON objects; BE manifests are Bedrock `manifest.json` supersets that preserve `format_version`, `header`, `modules`, and `dependencies` for native Bedrock compatibility, with all Aprism-specific data nested under an `aprism` object.
 4. **Language-agnostic.** A `language` / `type` field selects the runtime (java/cpp/lua/csharp/rust/javascript) and the entrypoint contract that applies. This follows the LeviLamina precedent on Bedrock and is generalized to JE.
@@ -184,9 +184,9 @@ For Bedrock, the manifest is a strict superset of the native `manifest.json`. Al
     "aprismApiVersion": ">=26.0-Alpha1",
     "gameVersionRange": ">=1.21.0 <1.22.0",
     "nativeEntrypoints": {
-      "windows-x64":   { "binary": "native/win-x64/example.dll",   "entry": "aprism_module_load"   },
-      "android-arm64": { "binary": "native/android-arm64/libexample.so", "entry": "aprism_module_load" },
-      "ios-arm64":     { "binary": "native/ios-arm64/example.dylib","entry": "aprism_module_load"   }
+      "windows-x64":   { "binary": "native/windows-x64/example.dll",     "entry": "aprism_mod_load" },
+      "android-arm64": { "binary": "native/android-arm64/libexample.so", "entry": "aprism_mod_load" },
+      "ios-arm64":     { "binary": "native/ios-arm64/example.dylib",     "entry": "aprism_mod_load" }
     },
     "depends": { "levilamina": ">=0.10.0" },
     "mixins": [ "hooks.example.json" ]
@@ -230,10 +230,11 @@ When Aprism loads a pack, it follows this order to obtain a manifest:
 
 1. **JE `.aje` packs.** Look for `aprism.manifest.json` at the pack root. If present, parse and validate against the JE schema.
 2. **JE fallback.** If `aprism.manifest.json` is absent, probe in this order:
-   1. `fabric.mod.json` (Fabric and Quilt packs).
-   2. `META-INF/neoforge.mods.toml` (NeoForge packs).
-   3. `META-INF/mods.toml` with `loaderVersion` heuristic (Forge packs).
-   4. `litemod.json` (LiteLoader packs).
+   1. `fabric.mod.json` (Fabric packs).
+   2. `quilt.mod.json` (Quilt packs; falls back to an embedded `fabric.mod.json` when absent).
+   3. `META-INF/neoforge.mods.toml` (NeoForge packs).
+   4. `META-INF/mods.toml` with `loaderVersion` heuristic (Forge packs).
+   5. `litemod.json` (LiteLoader packs).
    The first match is projected into the Aprism schema (see Section 8). If a provider block is implied by the discovered file (e.g. `fabric.mod.json` implies `platforms.fabric`), the projection fills that block.
 3. **BE `.abe` packs.** Look for `manifest.json` (Bedrock canonical) at the pack root. If an `aprism` object is present, parse it. If not, the pack is treated as a plain Bedrock pack and Aprism exposes only Script API entrypoints (no native loading).
 4. **Embedded `.aje` inside `.abe`.** A `.abe` pack may contain a `je-source/` directory with an embedded `.aje` for the conversion provenance field `aprism.compatibleJE`. This is informational only.
@@ -376,10 +377,10 @@ The `language` field selects the runtime and the entrypoint contract. Defaults: 
 | `language` | Runtime | Entrypoint contract |
 |---|---|---|
 | `java` | JVM classloader | Class name or `Class::method` (Section 3.3). |
-| `cpp` | Native dlopen/LoadLibrary; symbol `aprism_module_load` | C ABI: `aprism_status aprism_module_load(aprism_api_table*)`. |
+| `cpp` | Native dlopen/LoadLibrary | C ABI factory `extern "C" IAprismMod* aprism_mod_create()`; optional platform entry `aprism_mod_load` (Section 4.2 example and Document 8, Section 6.2). |
 | `lua` | Embedded Lua 5.x / LuaJIT (JE) or Bedrock Lua (BE) | String path to a `.lua` file with `function aprism_init(ctx)`. |
 | `csharp` | .NET CLR host (JE) / native .NET on BE | Path to assembly; static method `AprismInit`. |
-| `rust` | Native like `cpp` | C ABI symbol `aprism_module_load` (Rust `extern "C"`). |
+| `rust` | Native like `cpp` | Same as `cpp`: C ABI factory `aprism_mod_create` (Rust `extern "C"`). |
 | `javascript` | GraalJS (JE) / Bedrock Script API (BE) | Path to a `.js` module with default-exported `init`. |
 
 For non-Java languages on JE, the entrypoint specifier is an object: `{"adapter": "<language>", "value": "<path-or-symbol>"}`. The `languageAdapters` map must contain an entry for the adapter id, optionally pointing at a built-in Aprism adapter (`aprism:lua`, `aprism:csharp`, `aprism:graaljs`, `aprism:native`).

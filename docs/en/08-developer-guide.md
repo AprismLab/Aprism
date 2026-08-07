@@ -17,7 +17,7 @@ The guide is consistent with the architecture decisions recorded in Document 1 a
 
 | Tool | Version (Modern profile, 26.1+) | Version (Legacy profile, pre-26.1) | Purpose |
 |---|---|---|---|
-| JDK | Java 25 (Temurin/OpenJDK) | Java 17 for 1.20-1.20.4; Java 21 for 1.20.5-1.21.11 | Compile runtime |
+| JDK | Java 25 (Temurin/OpenJDK) | Java 8/11 for 1.16.5; Java 17 for 1.18-1.20.4; Java 21 for 1.20.5-1.21.11 (per the official Mojang baseline) | Compile runtime |
 | Gradle | 9.x | 8.x | Build orchestration |
 | Git | 2.40+ | 2.40+ | Source control, signed commits |
 | IDE | IntelliJ IDEA 2024.2+ or VS Code | same | Development |
@@ -559,14 +559,14 @@ dependencies {
 }
 
 jar {
-    archiveBaseName.set("examplemod-aprism")
+    archiveBaseName.set("examplemod")
     from("../aprism/src/main/resources")
 }
 
 shadowJar {
     dependsOn(jar)
     from(zipTree(jar.archiveFile))
-    archiveBaseName.set("examplemod-aprism")
+    archiveBaseName.set("examplemod")
     classifier.set("")
 }
 ```
@@ -591,7 +591,6 @@ allprojects {
 
     aprismPackaging {
         manifestFile = file("${rootDir}/aprism/src/main/resources/aprism.manifest.json")
-        includePlatform = ["fabric", "neoforge"]
         nativeTargets = []
         outputDir = layout.buildDirectory.dir("aprism")
     }
@@ -600,12 +599,12 @@ allprojects {
 
 ## 8. The aprism-packaging Gradle Plugin
 
-The `aprism-packaging` plugin consumes the output of `shadowJar` and `remapJar` and repackages it into the `.aje` or `.abe` archive format defined in Document 7. It does not recompile or remap anything; it only assembles.
+The `aprism-packaging` plugin consumes the `shadowJar` output of the `aprism/` source set and repackages it into the `.aje` or `.abe` archive format defined in Document 7. It does not recompile or remap anything; it only assembles. An `.aje` is an Aprism-native pack: it contains only the Aprism-native jar (which uses the Aprism API exclusively) and no loader-specific jars or per-loader subdirectories; the artifacts of the loader-adapter source sets (`fabric/`, `neoforge/`) are distributed as separate plain mod jars into the corresponding loader folders and do not enter the `.aje` (see Document 7, Section 3).
 
 ### 8.1 What the plugin does
 
 1. Resolves the manifest file from the configured `manifestFile` property.
-2. Collects the per-loader jars from each subproject's build output (`fabric/` jar, `neoforge/` jar).
+2. Collects the shadowJar artifact of the `aprism/` source set as the main mod jar `<modid>.jar` (uses the Aprism native API exclusively).
 3. Collects shared resources, mixin configs, and access wideners from the `aprism/` resources.
 4. Emits a ZIP whose internal structure matches the canonical `.aje` or `.abe` tree.
 5. Writes a `checksums.txt` next to the archive containing SHA-256 of the archive and of each member entry.
@@ -614,7 +613,7 @@ The `aprism-packaging` plugin consumes the output of `shadowJar` and `remapJar` 
 
 | Task | Produces | Depends on |
 |---|---|---|
-| `packageAje` | `build/aprism/<modid>-<version>.aje` | `:fabric:remapJar`, `:neoforge:remapJar`, `:aprism:shadowJar` |
+| `packageAje` | `build/aprism/<modid>-<version>.aje` | `:aprism:shadowJar` |
 | `packageAbe` | `build/aprism/<modid>-<version>.abe` | native build task or `:scripts:bundle` |
 | `packageAll` | both archives | `packageAje`, `packageAbe` |
 
@@ -624,9 +623,6 @@ The `aprism-packaging` plugin consumes the output of `shadowJar` and `remapJar` 
 aprismPackaging {
     // Required: path to the manifest at the pack root.
     manifestFile = file("aprism/src/main/resources/aprism.manifest.json")
-
-    // Required for .aje: which loader subdirs to populate.
-    includePlatform = ["fabric", "neoforge"]
 
     // Required for .abe: native targets to bundle under native/.
     nativeTargets = ["windows-x64", "android-arm64", "ios-arm64"]
@@ -770,15 +766,13 @@ Output: `build/aprism/examplemod-1.0.0.aje`. Internal structure:
 ```
 examplemod-1.0.0.aje
 +-- aprism.manifest.json
-+-- examplemod-aprism.jar
-+-- fabric/
-|   +-- examplemod-fabric.jar
-+-- neoforge/
-|   +-- examplemod-neoforge.jar
++-- examplemod.jar
 +-- resources/
 +-- mixins/
     +-- example.mixins.json
 ```
+
+The main jar is named `<modid>.jar`, matching the manifest `id`. The artifacts of the loader-adapter source sets (`fabric/`, `neoforge/`) do NOT enter the `.aje`: they are built and distributed as separate loader-native jars placed in the corresponding loader mod folders (`fabric-mods/`, `neoforge-mods/`; see Document 7, Section 6). An `.aje` is consumed exclusively by the Aprism native loader.
 
 ### 10.2 Export a .abe
 
@@ -808,11 +802,22 @@ unzip -l build/aprism/examplemod-1.0.0.aje | head
 unzip -p build/aprism/examplemod-1.0.0.aje aprism.manifest.json | jq .
 ```
 
-Verify that: the manifest is at the ZIP root; the manifest `id` matches the archive base name; the manifest `version` matches the archive version segment; per-loader jars are present under the correct subdirectories; mixin configs referenced in the manifest exist under `mixins/`.
+Verify that: the manifest is at the ZIP root; the manifest `id` matches the archive base name; the manifest `version` matches the archive version segment; the main jar is named `<modid>.jar` and sits at the ZIP root; no per-loader subdirectories or loader-specific jars are present (an `.aje` contains Aprism-native content only); mixin configs referenced in the manifest exist under `mixins/`.
 
 ### 10.4 Testing locally
 
 For JE, drop the `.aje` into the instance's `mods/` directory and launch through the Aprism loader. For BE, drop the `.abe` into `com.mojang/aprism_mods/` (the Aprism-introduced directory, not the standard `behavior_packs/`). Launch the game and watch the Aprism log for the mod's `Init` line. If the mod does not appear, consult the troubleshooting table.
+
+### 10.5 Converting from existing formats (aprism convert)
+
+The `aprism convert` CLI subcommand is the canonical format-conversion tool and ships with Aprism. It converts existing-format mods/packs into Aprism pack formats:
+
+```bash
+aprism convert --in my-mod.jar --out my-mod.aje
+aprism convert --in my-pack.mcpack --out my-pack.abe
+```
+
+It accepts `--in <path>`, `--out <path>`, `--format {aje,abe}` (inferred from the input type by default), and optional `--sign` to produce a cosign-signed output. Conversion is deterministic: the same input produces the same output bytes (modulo ZIP entry timestamps, which are zeroed). The per-step mapping of conversion rules to the resulting structure is in Document 7, Section 11. The command is aimed at authors migrating existing mods; Aprism-native mods should be built directly per this guide without conversion.
 
 ## 11. Compatibility-Group Build Profiles
 
@@ -1000,7 +1005,7 @@ extern "C" APRISM_EXPORT void aprism_mod_load(AprismContext& ctx) {
 
 ### 13.3 Hooking a game function
 
-Hook installation uses libhat for signature scanning and MinHook (Windows), ShadowHook (Android), or Dobby (iOS) for the detour. The Aprism BE API wraps the backend behind a uniform `Hook` interface.
+Hook installation uses libhat for signature scanning and MinHook (Windows), ShadowHook (Android), or Dobby (iOS, with ElleKit as the fallback) for the detour. The Aprism BE API wraps the backend behind a uniform `Hook` interface.
 
 ```cpp
 // src/hooks/BlockPlaceHook.cpp

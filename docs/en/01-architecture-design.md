@@ -123,7 +123,7 @@ Every `ModContainer` returned by any lookup API (`Loader.getModContainer`, event
 
 ### 5.4 Mixin as Canonical Injection
 
-SpongePowered Mixin is the sole bytecode injection mechanism. Aprism registers exactly one `MixinTransformer` in its `ClassFileTransformer` chain, positioned downstream of Aprism's own remapper. This mirrors the Fabric and NeoForge integration: Mixin sees already-remapped names and operates on stable intermediaries. No competing injection framework (AccessWidener-as-transformer, custom ASM passes) is permitted to mutate bytecode after Mixin; AccessWidener is applied as a separate pre-Mixin widening pass.
+SpongePowered Mixin is the sole bytecode injection mechanism. Aprism registers exactly one `MixinTransformer` in its `ClassFileTransformer` chain, positioned downstream of Aprism's own remapper. This mirrors the Fabric and NeoForge integration: Mixin sees already-remapped names and operates on stable intermediaries. No competing injection framework (custom ASM injection passes, etc.) is permitted to enter the transformation chain. AccessWidener is not an injection mechanism but a separate access-widening pass positioned AFTER Mixin in the pipeline (transform order: registered transformations → Mixin → AccessWidener; see Document 6, Section 3.4, and the `AprismClassTransformer` implementation): the widened access flags are therefore visible to downstream bytecode consumers (reflection, subsequent lookups), and because AccessWidener only rewrites access flags without adding members or method bodies, it cannot collide with Mixin injection points.
 
 ### 5.5 Remapping Strategy
 
@@ -136,8 +136,8 @@ Aprism does NOT natively understand Fabric, Forge, NeoForge, Quilt, or LiteLoade
 | Extension | Loader Key | Native Manifest | Entrypoint Model | Mod Folder |
 |-----------|-----------|-----------------|------------------|------------|
 | Fabric-Support.aep | `Fa` | `fabric.mod.json` v1 | `main`/`client`/`server` entrypoints | `fabric-mods/` |
-| NeoForge-Support.aep | `N` | `neoforge.mods.toml` | `@Mod` annotation, `IEventBus` | `neoforge-mods/` |
-| Forge-Support.aep | `Fo` | `mods.toml` | `@Mod` annotation, `@SubscribeEvent` | `forge-mods/` |
+| NeoForge-Support.aep | `N` | `META-INF/neoforge.mods.toml` | `@Mod` annotation, `IEventBus` | `neoforge-mods/` |
+| Forge-Support.aep | `Fo` | `META-INF/mods.toml` | `@Mod` annotation, `@SubscribeEvent` | `forge-mods/` |
 | Quilt-Support.aep | `Q` | `quilt.mod.json` | QSL entrypoints | `quilt-mods/` |
 | LiteLoader-Support.aep | `L` | `litemod.json` | `init()` lifecycle | `liteloader-mods/` |
 
@@ -149,7 +149,7 @@ Each loader-support extension exposes an adapter that translates its native entr
 
 ### 6.2 Auto-Discovery Fallback
 
-When a loader-specific mod ships without an `aprism.manifest.json`, the extension's loader runtime auto-discovers its native manifest (`fabric.mod.json`, `neoforge.mods.toml`, `mods.toml`, or `litemod.json`) and synthesizes an Aprism manifest. Synthesis is lossy: only fields with unambiguous Aprism equivalents are populated. Mods requiring Aprism-specific features (cross-edition conversion, compatibility-group declaration) must ship an explicit `aprism.manifest.json` and be packaged as `.aje` in `mods/`.
+When a loader-specific mod ships without an `aprism.manifest.json`, the extension's loader runtime auto-discovers its native manifest (`fabric.mod.json`, `quilt.mod.json`, `META-INF/neoforge.mods.toml`, `META-INF/mods.toml`, or `litemod.json`; full order in Document 2, Section 5) and synthesizes an Aprism manifest. Synthesis is lossy: only fields with unambiguous Aprism equivalents are populated. Mods requiring Aprism-specific features (cross-edition conversion, compatibility-group declaration) must ship an explicit `aprism.manifest.json` and be packaged as `.aje` in `mods/`.
 
 ### 6.3 Aprism Native Superset Principle
 
@@ -295,7 +295,7 @@ Two build profiles are maintained in parallel.
 
 | Profile | Minecraft Range | Gradle | Java Target |
 |---------|-----------------|--------|-------------|
-| Legacy | pre-26.1 (remapped) | Gradle 8.x | Java 17 (1.20-1.20.4), Java 21 (1.20.5-1.21.11) |
+| Legacy | pre-26.1 (remapped) | Gradle 8.x | Java 8/11 (1.16.5), Java 17 (1.18-1.20.4), Java 21 (1.20.5-1.21.11), per the official Mojang baseline |
 | Modern | 26.1+ (no-remap) | Gradle 9.x | Java 25 |
 
 ### 10.5 Version Catalog
@@ -306,7 +306,7 @@ A single `gradle/libs.versions.toml` central catalog pins all dependency version
 
 ### 11.1 Channel
 
-Distribution is standalone desktop download only. Aprism is not published to the Microsoft Store or Apple App Store, because store policies (Microsoft Store Policy 10.2, Apple App Review Guideline 2.4.5(iv)) prohibit dynamic code injection in store-distributed applications. Modrinth is used as a mirror, not a primary channel, because Modrinth hosts mod artifacts, not the loader itself.
+Distribution is standalone desktop download only. Aprism is not published to the Microsoft Store or Apple App Store, because store policies (Microsoft Store Policy 10.2, Apple App Review Guideline 2.4.5(iv)) prohibit dynamic code injection in store-distributed applications. Alpha builds ship as GitHub Pre-Releases; minor officials (bare version numbers) and the annual edition ship as GitHub Releases. Modrinth is used as a mirror, not a primary channel, because Modrinth hosts mod artifacts, not the loader itself.
 
 Minecraft binaries are downloaded from Mojang-authorized sources at install time. Aprism never redistributes modified Minecraft jars.
 
@@ -339,12 +339,14 @@ Updates are atomic: the new version is staged alongside the existing install, sw
 
 ### 12.1 Version Scheme
 
-The Aprism version follows `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>`. The current document targets `v26.0-Alpha.1`, meaning Year 2026 baseline, Aprism major version 0, Alpha sub-version 1. Phase (0-9) is an internal development stage tracker, NOT shown in public version strings; it is recorded only in FACT.md session logs. Alpha is the development sub-version number (Alpha.1 through Alpha.9); Beta is not planned. Official releases use `PreRelease.N` then `Release`. Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`.
+The Aprism version follows `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]`. One major line corresponds to one calendar year: `v26` is the 2026 line, containing ten minors `v26.0`, `v26.1` ... `v26.9` (the first 2026 build is `v26.0-Alpha.1`; the last 2026 minor is `v26.9`). Within each minor, `Alpha.1` through `Alpha.9` are published as GitHub Pre-Releases; the normal iteration cadence is one Alpha every two weeks. The minor official is the bare version number (e.g. `v26.2`, carrying no stability suffix), published as a GitHub Release; the last Alpha of each minor (Alpha.9) is its release candidate, and the label "Alpha 10" is never used. The annual edition takes the form `v<Year>.<full year>`, e.g. `v26.2026`, as the final improvement pass over `v26.9`, released each December as a GitHub Release. Beta is not planned. May 2027 is the estimated delivery date for all currently committed deliverables. Phase (0-9) is an internal development stage tracker, NOT shown in public version strings; it is recorded only in FACT.md session logs. Example artifacts: `Aprism-v26.0-Alpha.1-JE-1.21.4` (dev), `Aprism-v26.2-JE-26.2` (minor official).
 
 ### 12.2 JDK Targets
 
 | Minecraft Range | JDK Target |
 |-----------------|------------|
+| 1.16.5 | Java 8/11 |
+| 1.17 - 1.19.x | Java 16/17 (per the official Mojang baseline) |
 | 1.20 - 1.20.4 | Java 17 |
 | 1.20.5 - 1.21.11 | Java 21 |
 | 26.x | Java 25 |
@@ -390,8 +392,8 @@ The Aprism sandbox is capability-based: a mod's manifest declares the capabiliti
 
 - Fabric Loader, Knot classloader, TinyRemapper, Intermediary mappings. `fabric.mod.json` schema v1 with entrypoints, mixins, depends, accessWidener.
 - SpongePowered Mixin: `*.mixins.json` configuration, `@Mixin` / `@Inject` / `@Redirect` / `@ModifyArg`, `MixinTransformer` positioned downstream of remapping.
-- NeoForge: `neoforge.mods.toml`, `@Mod` annotation, `IEventBus`, `ModClassLoader` isolation. Diverged from Forge July 2023.
-- Minecraft Forge: `mods.toml`, `@Mod`, `@SubscribeEvent`, isolated classloader model.
+- NeoForge: `META-INF/neoforge.mods.toml`, `@Mod` annotation, `IEventBus`, `ModClassLoader` isolation. Diverged from Forge July 2023.
+- Minecraft Forge: `META-INF/mods.toml`, `@Mod`, `@SubscribeEvent`, isolated classloader model.
 - Quilt Loader: `quilt.mod.json`, QSL discontinued December 2025, Fabric compat shim, `ModContainer` identity fix in 0.29.2.
 - LiteLoader: `.litemod` format, `litemod.json`, 1.12.2 only, abandoned 2017.
 - MultiLoader-Template: common / fabric / neoforge source sets, `IPlatformHelper` via `ServiceLoader`. Neo-Loom fork (moritz-htk) building Fabric and NeoForge from a single Loom pipeline.

@@ -83,18 +83,17 @@ For offline launches, the cached manifest and downloaded version JSONs are used 
 
 ### 3.3 Java Runtime Detection and Recommendation
 
-JE versions map to required Java runtimes per Mojang profile. The launcher maintains a table mapping each major Minecraft version to its recommended Java major:
+JE versions map to required Java runtimes per the official Mojang profile. The launcher maintains a table mapping each major Minecraft version to its required Java major (per the official Mojang baseline: up to and including 1.16.5 = Java 8; 1.17 - 1.17.1 = Java 16; 1.18 - 1.20.4 = Java 17; from 1.20.5 = Java 21; from 26.1 = Java 25):
 
 | MC Version Range | Java Major | Notes |
 | --- | --- | --- |
-| 1.0 - 1.16.4 | 8 | Legacy |
-| 1.16.5 - 1.17.0 | 16 | Transitional |
-| 1.17.1 - 1.20.4 | 17 | LTS |
-| 1.20.5 - 1.20.6 | 21 | LTS |
-| 1.21+ | 21 | Aprism minimum runtime |
-| 1.21.6+ (planned) | 25 | Aprism forward-compat |
+| 1.0 - 1.16.5 | 8 | Aprism supports 1.16.5 only (priority target) |
+| 1.17 - 1.17.1 | 16 | Transitional; not an Aprism priority target |
+| 1.18 - 1.20.4 | 17 | Follows the Fabric coverage line |
+| 1.20.5 - 1.21.11 | 21 | Priority targets include 1.21.4 and 1.21.10 |
+| 26.1+ | 25 | Aprism Modern (no-remap); priority targets include 26.1.2 and 26.2 |
 
-Aprism itself requires Java 21 as a baseline runtime for the launcher process. The agent jar is built with `--release 21` bytecode and is forward-compatible with Java 25. Launchers SHOULD offer to install a Mojang-provided Java runtime (from `javaRuntimeManifest` in the version JSON) if no matching runtime is detected in the user's PATH or configured runtime list.
+Aprism's runtime baseline has two layers. The **launcher process** requires Java 21 or newer. The **injected agent** is baselined per build profile: Modern artifacts (26.1+) are built with `--release 21` bytecode and are forward-compatible with Java 25; Legacy artifacts (1.16.5-1.21.11) are built with `--release 8` bytecode and run on the Java 8/11/16/17/21 runtime that each version of the profile requires. Every release therefore ships the agent as two baseline artifacts (`aprism-<version>-agent-modern.jar` / `aprism-<version>-agent-legacy.jar`), and the launcher selects the matching artifact for the instance's Minecraft version. The `java` field in a mod manifest declares the mod's own requirement on the game JVM; Aprism intersects it with the running JDK at load time (Document 7, validation stage 7), so a Legacy mod declaring `>=8` is not categorically excluded by the Java 21 baseline. Launchers SHOULD offer to install a Mojang-provided Java runtime (from `javaRuntimeManifest` in the version JSON) if no matching runtime is detected in the user's PATH or configured runtime list.
 
 ### 3.4 Mod Directory Management
 
@@ -164,7 +163,7 @@ aprism-zygisk/
   post-fs-data.sh      # mount .abe mods directory
 ```
 
-The module reads its config from `/data/adb/aprism/config.json` and serves `.abe` mods from `/data/adb/aprism/mods/`. Symlinks into `/sdcard/games/com.mojang/behavior_packs/` allow world-scoped packs to resolve.
+The module reads its config from `/data/adb/aprism/config.json`, stages managed `.abe` mods under `/data/adb/aprism/staging/`, and bind-mounts them into the canonical directory `/sdcard/games/com.mojang/aprism_mods/` (the sole mod directory scanned by the Aprism BE loader; consistent across platforms, see Document 7, Section 7). Symlinks into `/sdcard/games/com.mojang/behavior_packs/` allow world-scoped packs to resolve.
 
 ### 4.3 Android Non-Root (Priority P1)
 
@@ -198,7 +197,7 @@ Because TrollStore installation is per-IPA, every BE update from Mojang requires
 
 The Bedrock Dedicated Server (`bedrock_server.exe` on Windows, `bedrock_server` on Linux) requires no injection. The Aprism loader is linked directly into a wrapper executable that exports the same symbols expected by the server binary. The launcher replaces the user's `bedrock_server` invocation with `aprism-bds-launcher` which `dlopen`s the original binary and forwards its entrypoint.
 
-`server.properties` integration: the launcher writes Aprism-specific keys into `server.properties` under the `aprism.` namespace (e.g., `aprism.mod-directory=./aprism/mods`). The Aprism BDS loader reads these keys at startup.
+`server.properties` integration: the launcher writes Aprism-specific keys into `server.properties` under the `aprism.` namespace (e.g., `aprism.mod-directory=./games/com.mojang/aprism_mods`). The default value is the canonical directory; the Aprism BDS loader reads these keys at startup.
 
 ### 4.6 Platform Injection Comparison
 
@@ -289,7 +288,7 @@ The download pipeline:
 1. Resolve the chosen `ModDescriptor` from a search result or direct URL.
 2. Download the artifact to a staging directory (`aprism/cache/mods/<id>-<version>.part`).
 3. Compute SHA256; compare to `descriptor.sha256`. On mismatch, delete the part file and retry once.
-4. Verify the Aprism manifest signature inside the archive (`.aje`/`.abe` archives include an `aprism.sig` file signed by the Aprism mod signing key).
+4. Verify the signature. `.aje`/`.abe` signatures are distributed detached (`<pack>.sig` and `<pack>.bundle`) and downloaded alongside the artifact; verification uses cosign keyless, the same mechanism as Aprism release artifacts (Document 7, Section 10). Artifacts that fail verification fall through to the unsigned policy (see the default-reject rule below).
 5. Move the verified file to the target directory based on its type:
    - JE `.aje` (Aprism native): `.minecraft/mods/<id>-<version>.aje`
    - JE `.jar` (loader-specific): `.minecraft/<loader>-mods/<id>-<version>.jar` (e.g. `fabric-mods/`)
@@ -442,7 +441,7 @@ The launcher config lives at `${aprism_home}/config.json`. Schema (abbreviated):
 }
 ```
 
-Update channels: `stable`, `beta`, `nightly`. Each channel maps to a GitHub Releases tag pattern (`v*`, `v*-beta.*`, `v*-nightly.*`).
+Update channels: `stable`, `alpha`. Each channel maps to a GitHub Releases tag pattern: `stable` matches bare official tags (e.g. `v26.2`, annual edition `v26.2026`); `alpha` matches pre-release tags (e.g. `v26.2-Alpha.3`, i.e. GitHub Pre-Releases). Beta and nightly channels are not planned.
 
 ### 9.2 Per-Instance and Per-World State
 
@@ -457,10 +456,10 @@ BE worlds store Aprism state inside the world directory alongside `world_behavio
 
 - `aprism/state.json` - active Aprism mods for this world.
 
-BE client global state lives under `games/com.mojang/aprism/`:
+BE client global state and mods live under `games/com.mojang/`:
 
 - `aprism/installed.json` - Aprism core version, install timestamp.
-- `aprism/mods/<id>/` - unpacked `.abe` mod contents.
+- `aprism_mods/<id>/` - unpacked `.abe` mod contents (the canonical mod directory, scanned by the loader at startup; see Document 7, Section 7; the path prefix differs per platform but the `aprism_mods/` subdirectory is consistent).
 
 ### 9.3 Migration from Existing Launchers
 
@@ -507,7 +506,7 @@ All error messages are written to a translation table keyed by a stable code (e.
 ## 11. Security Considerations
 
 - cosign verification is mandatory for all Aprism core downloads. The launcher refuses to install any artifact whose bundle cannot be verified against Rekor or whose certificate chain does not validate against the Fulcio root. The OIDC identity in the certificate's subject alternative name MUST match the `BlockConnect/Aprism` repository workflow.
-- Unsigned Aprism mods (`.aje`/`.abe` without a valid `aprism.sig`) are not loaded by default. The opt-in allowlist is per-instance and never global, so a malicious mod cannot escalate by being allowed in one instance.
+- Unsigned Aprism mods (`.aje`/`.abe` without a valid detached cosign signature `<pack>.sig`/`<pack>.bundle`) are not loaded by default. The opt-in allowlist is per-instance and never global, so a malicious mod cannot escalate by being allowed in one instance.
 - The launcher never executes downloaded code outside the Aprism core or a verified mod. Helper scripts bundled with mods run in a restricted sandbox on platforms that support it.
 - Windows UWP injection: the proxy DLL is signed where possible. The launcher provides an AV exclusion guidance document for users of Microsoft Defender, covering `Add-MpPreference -ExclusionPath` for the `version.dll` install location. For third-party AVs, the launcher suggests submitting the binary to the vendor's false-positive form. Aprism does NOT instruct users to disable AV software wholesale.
 - The GITHUB_TOKEN, when resolved from `gh auth token` or environment, is used only for GitHub API calls and is stripped on cross-host redirects (Section 8.3). It is never logged and never persisted to the Aprism config.
@@ -534,7 +533,7 @@ All error messages are written to a translation table keyed by a stable code (e.
 ## 13. References
 
 - Aprism Loader Architecture Design (internal, Document 1 of 8)
-- Aprism Mod Development Guide (internal, Document 4 of 8)
+- Aprism Mod Developer Guide (internal, Document 8 of 8)
 - Prism Launcher source: `PrismExternalUpdater/GitHubRelease.cpp` - reference GitHub Releases client implementation
 - Mojang version manifest: `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`
 - Mojang Java runtime manifest: linked from version JSON `javaVersion.component`

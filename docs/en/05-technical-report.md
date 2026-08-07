@@ -138,7 +138,7 @@ The refmap strategy is: Aprism's remapper produces the runtime naming layer (Int
 | SafetyHook | Windows | Inline (alternative) | Modern alternatives | MIT | Alternate; not selected for ecosystem reasons |
 | Detours (Microsoft) | Windows | Inline | Wide industry use | MIT | Alternate; heavier dependency |
 | ShadowHook | Android | Inline | LSPosed, Zygisk modules | BSD-3-Clause | **Selected (Android)** |
-| Dobby | Android/iOS | Inline | Various Dobby-based tools | Apache-2.0 | **Selected (iOS)** |
+| Dobby | Android/iOS | Inline | Various Dobby-based tools | Apache-2.0 | **Selected (iOS)**; ElleKit is the iOS fallback |
 | And64InlineHook | Android | Inline | Legacy Android tools | MIT | Alternate; superseded by ShadowHook |
 | libhat | Cross | Pattern scanning (not hooking) | Amethyst, LeviLamina | MIT | **Selected (signatures)** |
 

@@ -53,12 +53,13 @@ Project decisions, architecture, and session history are tracked in [FACT.md](FA
 
 ## Versioning
 
-Format: `v<Year>.<aprism>-<stability>.<subVer>-<MCEdit>-<MCVer>` (Phase is internal-only, not shown publicly)
+Format: `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]` (Phase is internal-only, not shown publicly)
 
-- Baseline: `v26.0`
-- Development (public): `v26.0-Alpha.1` ... `v26.0-Alpha.9`
-- Internal dev tag: `v26.0-Alpha.1-Phase0` ... `Phase9` (Phase tracked only in FACT.md)
-- Official: `v26.0-PreRelease.1` -> `v26.0-Release`
+- Major line: one per calendar year. `v26` = the 2026 line, containing ten minors `v26.0` ... `v26.9`.
+- Development (public): within each minor, `v26.0-Alpha.1` ... `v26.0-Alpha.9`, shipped as GitHub Pre-Releases; normal cadence one Alpha every two weeks.
+- Minor official: bare version number, e.g. `v26.2`, shipped as a GitHub Release. Alpha.9 is the release candidate; "Alpha 10" is never used.
+- Annual edition: `v26.2026` (final improvement pass over `v26.9`), each December, GitHub Release.
+- Internal dev tag: `v26.0-Alpha.1-Phase0` ... (Phase tracked only in FACT.md)
 - Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`
 - Beta is not planned.
 - Interface contract: monotonic increment only; deprecation allowed with notice.

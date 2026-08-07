@@ -52,6 +52,8 @@ The manifest `type` field selects the runtime and entrypoint contract:
 
 ## 3. .aje Pack Structure
 
+An `.aje` is an Aprism-native pack consumed exclusively by the Aprism native loader. An `.aje` must contain exactly one main mod jar (`<modid>.jar`) at the ZIP root, whose code uses the Aprism native API exclusively. An `.aje` must NOT contain per-loader subdirectories (such as `fabric/` or `neoforge/`) or loader-specific jars (such as a jar carrying `fabric.mod.json`); adaptation artifacts for other loaders are distributed as separate mod jars into the corresponding loader mod folders (see Section 6). Both the packaging plugin (Document 8) and the validator (Section 9) enforce this rule.
+
 ### 3.1 Full directory tree (canonical)
 
 ```
@@ -292,7 +294,7 @@ When Aprism encounters a pack (by directory scan or import event), it follows th
 
 1. Open the archive and look for `aprism.manifest.json` at the ZIP root.
 2. If found, parse and schema-validate; this is authoritative.
-3. If not found in a `.aje`, probe for legacy manifests in this order: `fabric.mod.json` (root or inside any jar), `META-INF/neoforge.mods.toml`, `META-INF/mods.toml`, `litemod.json`. The first hit is projected into an in-memory Aprism manifest.
+3. If not found in a `.aje`, probe for legacy manifests in this order: `fabric.mod.json` (root or inside any jar), `quilt.mod.json`, `META-INF/neoforge.mods.toml`, `META-INF/mods.toml`, `litemod.json` (matching the order in Document 2, Section 5). The first hit is projected into an in-memory Aprism manifest.
 4. If no manifest of any kind is found, the pack is rejected and logged.
 
 ## 6. Per-Platform Placement Guide (JE)
@@ -410,6 +412,8 @@ Before any class or native binary is loaded, Aprism validates every pack through
 | 9. Conflict check | No `breaks` entry matched by an installed mod | Reject; log conflict |
 | 10. Signature (if signed) | Cosign signature valid against the bundle | Apply unsigned-mod policy (Section 10) |
 
+**Structural purity (applied after stage 1).** For an `.aje`, the validator rejects any entry under a per-loader subdirectory (such as `fabric/` or `neoforge/`) and any jar carrying a legacy loader manifest (`fabric.mod.json`, `neoforge.mods.toml`, `META-INF/mods.toml`, `litemod.json`); exactly one main mod jar must be present and it must be named `<modid>.jar`. On failure, reject and log "non-native content in .aje". This check enforces the canonical definition in Section 3.
+
 ## 10. Pack Signing (Optional but Recommended)
 
 ### 10.1 Cosign-signed bundles
@@ -456,7 +460,7 @@ For BE native mods, the default is `deny` on iOS (TrollStore) and BDS, and `warn
 
 ### 11.3 Automated conversion tool reference
 
-The `aprism convert` CLI subcommand is the canonical conversion tool. It accepts `--in <path>`, `--out <path>`, `--format {aje,abe}`, and optional `--sign` to produce a cosign-signed output. Conversion is deterministic: the same input produces the same output bytes (modulo ZIP entry timestamps, zeroed). The tool is bundled with Aprism and documented in Document 3.
+The `aprism convert` CLI subcommand is the canonical conversion tool. It accepts `--in <path>`, `--out <path>`, `--format {aje,abe}`, and optional `--sign` to produce a cosign-signed output. Conversion is deterministic: the same input produces the same output bytes (modulo ZIP entry timestamps, zeroed). The tool is bundled with Aprism and documented in Document 8, Section 10.5.
 
 ## 12. Aprism Extensions (.aep)
 

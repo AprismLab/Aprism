@@ -441,7 +441,9 @@ later required).
 
 ## 8. Phased Delivery Recommendation
 
-### Phase 0 (Alpha 1-3): JE foundation
+Release cadence: one major line per calendar year, containing ten minors (`v26.0` through `v26.9`); within each minor, `Alpha.1` through `Alpha.9` ship as GitHub Pre-Releases at a normal cadence of one Alpha every two weeks; the minor official is the bare version number (a GitHub Release), with Alpha.9 as its release candidate. The annual edition (e.g. `v26.2026`) ships each December. May 2027 is the estimated delivery date for all currently committed deliverables. The Phase breakdown below describes work content and go/no-go criteria only and is not pinned to specific version numbers; the minors and Alphas each Phase actually spans are determined by progress.
+
+### Phase 0: JE foundation
 
 Scope: JE unified loader, superset manifest, multi-loader build tooling, basic
 launcher integration. Prove the foundation on JE only.
@@ -453,7 +455,7 @@ Go/no-go criteria:
 - Build tooling produces per-loader artifacts from a single source tree.
 - No EULA or distribution blocker identified by legal review.
 
-### Phase 1 (Alpha 4-6): BE Windows client
+### Phase 1: BE Windows client
 
 Scope: BE Windows client injection, mod API, signature DB for current BE
 release. Prove the BE concept on the best-supported platform.
@@ -469,7 +471,7 @@ Go/no-go criteria:
 If the 7-day signature update criterion is not met, do not proceed to Phase 2;
 revisit RE process and tooling first.
 
-### Phase 2 (Alpha 7-9): BE Android + BDS server
+### Phase 2: BE Android + BDS server
 
 Scope: BE Android root path first; non-root container path after legal review.
 BDS server modding via direct linking.
@@ -480,7 +482,7 @@ Go/no-go criteria:
 - BDS server loader runs reference server mods.
 - Signature DB covers Windows, Android, and BDS for the current BE release.
 
-### Phase 3 (PreRelease): Conversion + iOS research + polish
+### Phase 3: Conversion + iOS research + polish
 
 Scope: JE-to-BE conversion tooling (human-assisted), iOS research prototype,
 documentation completion, UX polish.
@@ -492,10 +494,11 @@ Go/no-go criteria:
   to ship.
 - All 8 documentation set documents complete and reviewed.
 
-### Phase 4 (Release): v26.0 stable
+### Phase 4: Stable
 
-Scope: v26.0 stable release, community onboarding, contributor guide for
-signature DB maintenance, long-term support policy.
+Scope: stable release (bare-version minor officials, first delivery `v26.0`, all
+committed deliverables complete by May 2027), community onboarding, contributor
+guide for signature DB maintenance, long-term support policy.
 
 Go/no-go criteria:
 - Phase 0-3 criteria all sustained across at least two BE releases.

@@ -92,9 +92,10 @@ Mod discovery is filesystem-driven. Aprism scans the `mods/` directory for archi
 
 1. `aprism.manifest.json` (canonical, superset schema with provider blocks)
 2. `fabric.mod.json` (Fabric compatibility fallback)
-3. `quilt.mod.json` (Quilt compatibility fallback)
-4. `forge.mods.toml` (NeoForge / Forge compatibility fallback)
-5. `pack.mcmeta` plus entrypoint hints (Bedrock-style fallback)
+3. `quilt.mod.json` (Quilt compatibility fallback; falls back to an embedded `fabric.mod.json` when absent)
+4. `META-INF/neoforge.mods.toml` (NeoForge compatibility fallback)
+5. `META-INF/mods.toml` with a `loaderVersion` heuristic (Forge compatibility fallback)
+6. `litemod.json` (LiteLoader compatibility fallback)
 
 When only a fallback manifest is found, Aprism synthesises the canonical fields. The synthesized manifest is marked `aprism.manifest.source = "fallback"` so downstream tooling can distinguish native Aprism mods from adapted ones.
 
@@ -211,13 +212,13 @@ flowchart LR
     end
 ```
 
-On Windows, Aprism ships a proxy `version.dll` next to `Minecraft.Windows.exe`. The proxy forwards every legitimate export to the system `version.dll` and, in its `DllMain`, loads `Aprism.dll` and calls its initialiser. The initialiser performs version detection, signature DB selection, hook installation, mod registrar init, and finally a scan of `com.mojang/aprism_mods/` for `.abe` mods.
+On Windows, Aprism ships a proxy `version.dll` next to `Minecraft.Windows.exe`. The proxy forwards every legitimate export to the system `version.dll` and, in its `DllMain`, loads `Aprism.dll` and calls its initialiser. When the proxy DLL route is blocked by antivirus or WDAC, an ExLoader / manual-map fallback path exists; it requires elevated privileges and is opt-in only (see Document 3, Section 4.1). The initialiser performs version detection, signature DB selection, hook installation, mod registrar init, and finally a scan of `com.mojang/aprism_mods/` for `.abe` mods.
 
 On Android with root, Aprism ships as a Zygisk module. Zygisk loads Aprism into the zygote process; when the zygote forks for `com.mojang.minecraftpe`, Aprism is already mapped. The same initialiser runs against `libminecraftpe.so`, using ShadowHook for inline hooks.
 
 On Android without root, Aprism ships inside a container application (NMLauncher-style) that hosts the target APK in a sandbox. The container's `Application.onCreate` calls `System.loadLibrary("aprism")` before the game's native library loads, ensuring Aprism is resident when the game's first native call lands.
 
-On iOS, the user's Mach-O is patched with `insert_dylib`, which adds an `LC_LOAD_DYLIB` load command pointing at `Aprism.dylib`. At launch `dyld` loads Aprism alongside the game; the Aprism initialiser runs and installs hooks via Dobby.
+On iOS, the user's Mach-O is patched with `insert_dylib`, which adds an `LC_LOAD_DYLIB` load command pointing at `Aprism.dylib`. At launch `dyld` loads Aprism alongside the game; the Aprism initialiser runs and installs hooks via Dobby (ElleKit as the fallback).
 
 ### 4.2 Hook Installation Pipeline
 
@@ -260,7 +261,7 @@ The fallback chain for each function is: exact signature, relaxed signature (few
 
 ### 4.3 BE Mod Loading
 
-After hooks are installed, Aprism scans `aprism_mods/` for `.abe` archives. Each archive's manifest declares its type: native or script. Native mods ship a `.so`, `.dll`, or `.dylib` matching the host platform; Aprism `dlopen`s the library and calls its entrypoint symbol (`aprism_mod_init`). Script mods declare a `Script API` entrypoint; Aprism registers them with the Bedrock script engine, which then evaluates the bundled JavaScript against `@minecraft/server`.
+After hooks are installed, Aprism scans `aprism_mods/` for `.abe` archives. Each archive's manifest declares its type: native or script. Native mods ship a `.so`, `.dll`, or `.dylib` matching the host platform; Aprism `dlopen`s the library and resolves its entrypoint symbol (default `aprism_mod_load`; see Document 8, Section 6.2: the loader invokes that symbol first, then constructs the `IAprismMod` instance via the `aprism_mod_create` factory). Script mods declare a `Script API` entrypoint; Aprism registers them with the Bedrock script engine, which then evaluates the bundled JavaScript against `@minecraft/server`.
 
 Event dispatch on BE mirrors JE. The same phase-strict bus is used; the same cancellation semantics apply. The only difference is that some events originate from native hooks rather than from JVM events, and some events are edition-specific (e.g. `BedrockRenderEvent` has no JE analogue).
 
@@ -417,13 +418,13 @@ Two principles govern the recovery column. First, recovery is local wherever pos
 
 ## 9. References
 
-- Document 1, Aprism Architecture Design
-- Document 2, Aprism Mod Manifest Specification
-- Document 3, Aprism Launcher Guide
-- Document 4, Aprism Feasibility Report
-- Document 5, Aprism Developer Reference
-- Document 7, Aprism Security Model
-- Document 8, Aprism Contribution and Signature DB Workflow
+- Document 1, Aprism Loader Overall Architecture Design
+- Document 2, Aprism JE / BE Mod Manifest Specification
+- Document 3, Aprism Launcher Adaptation, Download/Install and Management Module Development Guide
+- Document 4, Aprism Product Feasibility Report
+- Document 5, Aprism Product Technical Report and Research Methodology
+- Document 7, Aprism Mods Pack (.aje/.abe) Classification, Structure and Placement
+- Document 8, Aprism Mod Developer Guide
 - JVM Specification, chapter on class file load hook and instrumentation
 - Mixin reference, injection point descriptors and priority resolution
 - MinHook, ShadowHook, and Dobby project documentation

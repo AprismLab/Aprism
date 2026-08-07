@@ -3,7 +3,7 @@
 # Author: BlockConnect@StarsailsClover
 
 [versions]
-# Aprism (public: v<Year>.<aprism>-<stability>.<subVer>)
+# Aprism (public: v<Year>.<minor>[-Alpha.<n>])
 aprism = "v26.0-Alpha.1"
 
 # Minecraft / Mappings
