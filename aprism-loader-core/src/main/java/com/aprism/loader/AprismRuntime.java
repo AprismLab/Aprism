@@ -1,9 +1,13 @@
 package com.aprism.loader;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -320,7 +324,16 @@ public final class AprismRuntime {
             if (dm == null) {
                 continue;
             }
-            classLoader.addModJar(dm.path());
+            if (dm.format() == ModDiscoverer.ModFormat.AJE) {
+                // A .aje is a ZIP wrapper: the executable mod classes live in
+                // the embedded <modid>.jar (and optional lib/ jars). Extract
+                // them to a temp directory and add those to the classloader;
+                // a URLClassLoader cannot read classes from a nested archive.
+                extractModJars(dm);
+            } else {
+                // Plain .jar / .litemod: the archive itself is the classpath entry
+                classLoader.addModJar(dm.path());
+            }
             LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
             mods.put(container.getId(), container);
             // Register the mod's mixin configs (if any) with the Mixin environment
@@ -329,6 +342,43 @@ public final class AprismRuntime {
             registerAccessWidener(dm.manifest(), dm.path());
         }
         LOG.info("Loaded " + mods.size() + " mod(s) across " + (loaderFolders.size() + 1) + " folder(s)");
+    }
+
+    /**
+     * Extracts every embedded jar (the {@code <modid>.jar} main jar plus any
+     * {@code lib/} dependency jars) from a {@code .aje} archive into the mod
+     * temp directory and registers each with the classloader.
+     *
+     * @param dm the discovered AJE mod
+     */
+    private void extractModJars(ModDiscoverer.DiscoveredMod dm) {
+        Path modPath = dm.path();
+        String modId = dm.manifest().id();
+        try (FileSystem fs = FileSystems.newFileSystem(modPath, (ClassLoader) null)) {
+            List<Path> jars;
+            try (var stream = Files.walk(fs.getPath("/"))) {
+                jars = stream
+                        .filter(p -> p.toString().endsWith(".jar"))
+                        .filter(p -> !p.toString().contains("resources/"))
+                        .filter(p -> !p.toString().contains("mixins/"))
+                        .toList();
+            }
+            if (jars.isEmpty()) {
+                LOG.warning("No embedded jar found in .aje for mod " + modId
+                        + "; entrypoints will not resolve");
+                return;
+            }
+            for (Path jar : jars) {
+                String name = jar.getFileName().toString();
+                Path target = getExtensionTempDir().resolve(modId + "_" + name);
+                try (InputStream is = Files.newInputStream(jar)) {
+                    Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+                }
+                classLoader.addModJar(target);
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to extract embedded jars from " + modPath + ": " + e.getMessage());
+        }
     }
 
     /**

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "examplemod",
+  "version": "1.0.0",
+  "displayName": "Example Mod",
+  "description": "Canonical example of an Aprism-native mod: logs each lifecycle phase.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.ExampleMod"]
+  },
+  "mixins": [],
+  "depends": {
+    "aprism": ">=26.0-Alpha.1"
+  },
+  "platforms": {},
+  "accessWidener": null,
+  "provides": [],
+  "custom": {}
+}

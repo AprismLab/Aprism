@@ -1,0 +1,8 @@
+// Standalone settings for the Aprism packaging included build.
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'aprism-packaging'

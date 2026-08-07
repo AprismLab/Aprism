@@ -6,6 +6,9 @@ pluginManagement {
         maven { url = 'https://maven.neoforged.net/releases' }
         maven { url = 'https://maven.architectury.dev/' }
     }
+    // The Aprism packaging plugin is an included build so that example mods
+    // can consume it via the plugins DSL without publishing.
+    includeBuild 'aprism-packaging'
 }
 
 dependencyResolutionManagement {
@@ -22,4 +25,4 @@ rootProject.name = 'Aprism'
 include ':aprism-api'
 include ':aprism-manifest'
 include ':aprism-loader-core'
-include ':aprism-packaging'
+include ':examples:examplemod'

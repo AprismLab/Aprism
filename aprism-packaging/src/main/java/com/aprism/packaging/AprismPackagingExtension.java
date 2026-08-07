@@ -7,14 +7,21 @@ import java.util.List;
  * Gradle extension for configuring Aprism packaging. Exposed under the
  * {@code aprismPackaging} block in a build script.
  *
+ * <p>Directory-valued fields are plain relative paths resolved against the
+ * project directory.
+ *
  * @author BlockConnect@StarsailsClover
  */
 public class AprismPackagingExtension {
 
     private String manifestFile = "aprism.manifest.json";
-    private List<String> includePlatforms = new ArrayList<>();
-    private List<String> nativeTargets = new ArrayList<>();
+    private String mainJar;
+    private String extraResources = "src/main/resources-shared";
+    private String mixinConfigs = "src/main/mixins";
+    private String libDir = "src/main/lib";
     private String outputDir = "build/aprism";
+    private String compatibilityGroup = "legacy";
+    private List<String> nativeTargets = new ArrayList<>();
     private String minecraftEdition;
     private String minecraftVersion;
 
@@ -33,31 +40,61 @@ public class AprismPackagingExtension {
     }
 
     /**
-     * @return the platform ids (e.g. {@code fabric}, {@code neoforge}) to include
+     * @return the explicit main jar path, or {@code null} to fall back to the
+     *         {@code jar} task output. The embedded jar is always named
+     *         {@code <modid>.jar} inside the archive regardless.
      */
-    public List<String> getIncludePlatforms() {
-        return includePlatforms;
+    public String getMainJar() {
+        return mainJar;
     }
 
     /**
-     * @param includePlatforms the platform ids to include
+     * @param mainJar the explicit main jar path, or {@code null} for the default
      */
-    public void setIncludePlatforms(List<String> includePlatforms) {
-        this.includePlatforms = includePlatforms;
+    public void setMainJar(String mainJar) {
+        this.mainJar = mainJar;
     }
 
     /**
-     * @return the native targets (e.g. {@code windows-x64}, {@code linux-x64}) to bundle
+     * @return the directory whose contents are copied to {@code resources/}
      */
-    public List<String> getNativeTargets() {
-        return nativeTargets;
+    public String getExtraResources() {
+        return extraResources;
     }
 
     /**
-     * @param nativeTargets the native targets to bundle
+     * @param extraResources the directory copied to {@code resources/}
      */
-    public void setNativeTargets(List<String> nativeTargets) {
-        this.nativeTargets = nativeTargets;
+    public void setExtraResources(String extraResources) {
+        this.extraResources = extraResources;
+    }
+
+    /**
+     * @return the directory whose contents are copied to {@code mixins/}
+     */
+    public String getMixinConfigs() {
+        return mixinConfigs;
+    }
+
+    /**
+     * @param mixinConfigs the directory copied to {@code mixins/}
+     */
+    public void setMixinConfigs(String mixinConfigs) {
+        this.mixinConfigs = mixinConfigs;
+    }
+
+    /**
+     * @return the directory whose contents are copied to {@code lib/} (embedded deps)
+     */
+    public String getLibDir() {
+        return libDir;
+    }
+
+    /**
+     * @param libDir the directory copied to {@code lib/}
+     */
+    public void setLibDir(String libDir) {
+        this.libDir = libDir;
     }
 
     /**
@@ -72,6 +109,35 @@ public class AprismPackagingExtension {
      */
     public void setOutputDir(String outputDir) {
         this.outputDir = outputDir;
+    }
+
+    /**
+     * @return the compatibility group tag embedded in archive metadata
+     */
+    public String getCompatibilityGroup() {
+        return compatibilityGroup;
+    }
+
+    /**
+     * @param compatibilityGroup the compatibility group tag
+     */
+    public void setCompatibilityGroup(String compatibilityGroup) {
+        this.compatibilityGroup = compatibilityGroup;
+    }
+
+    /**
+     * @return the native targets (e.g. {@code windows-x64}, {@code android-arm64})
+     *         to bundle under {@code native/} in a {@code .abe}
+     */
+    public List<String> getNativeTargets() {
+        return nativeTargets;
+    }
+
+    /**
+     * @param nativeTargets the native targets to bundle
+     */
+    public void setNativeTargets(List<String> nativeTargets) {
+        this.nativeTargets = nativeTargets;
     }
 
     /**

@@ -1,17 +1,31 @@
 // Aprism Packaging - Gradle plugin for .aje/.abe pack assembly
-// Consumes shadowJar/remapJar output and produces Aprism pack formats
+// Published as an included build so example mods consume it via the plugins DSL.
+// Consumes the project's `jar` output and produces Aprism pack formats.
 
 plugins {
     id 'java-gradle-plugin'
 }
 
+group = 'com.aprism'
+version = 'v26.0-Alpha.1'
+
+// Declared at project level (not settings level) so that a global init script
+// adding repositories cannot shadow these.
+repositories {
+    mavenCentral()
+}
+
 dependencies {
     implementation gradleApi()
-    implementation project(':aprism-api')
-    implementation project(':aprism-manifest')
-    implementation libs.gson
+    implementation 'com.google.code.gson:gson:2.13.1'
 
-    testImplementation libs.bundles.testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+    testImplementation 'org.assertj:assertj-core:3.27.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 gradlePlugin {

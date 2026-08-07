@@ -1,0 +1,27 @@
+// Example Aprism-native mod (see docs/zh/08-开发者指南.md §10)
+// Demonstrates the minimal shape of an Aprism mod project: a main jar
+// assembled by the java plugin and a .aje packaged by the Aprism
+// packaging plugin (consumed from the included build).
+
+plugins {
+    id 'java'
+    id 'com.aprism.packaging'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+dependencies {
+    compileOnly project(':aprism-api')
+}
+
+aprismPackaging {
+    manifestFile = 'aprism.manifest.json'
+}
+
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Example Mod',
+                   'Implementation-Version': project.version
+    }
+}
