@@ -60,9 +60,19 @@ Format: `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]` (Phase is internal-only
 - Minor official: bare version number, e.g. `v26.2`, shipped as a GitHub Release. Alpha.9 is the release candidate; "Alpha 10" is never used.
 - Annual edition: `v26.2026` (final improvement pass over `v26.9`), each December, GitHub Release.
 - Internal dev tag: `v26.0-Alpha.1-Phase0` ... (Phase tracked only in FACT.md)
-- Example artifact: `Aprism-v26.0-Alpha.1-JE-1.21.4`
+- Example artifact: `Aprism-v26.0-Alpha.1-JE-26.2.jar`
 - Beta is not planned.
 - Interface contract: monotonic increment only; deprecation allowed with notice.
+
+## Quick Start
+
+Download `Aprism-<version>-JE-<MCVer>.jar` from [GitHub Releases](https://github.com/NDBlockConnect/Aprism/releases) and attach it as a javaagent:
+
+```bash
+java -javaagent:Aprism-v26.0-Alpha.1-JE-26.2.jar=aprismVersion=v26.0-Alpha.1;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
+```
+
+Place `.aje` mods in `<game-dir>/mods/` (see [08-developer-guide.md](docs/en/08-developer-guide.md) for the mod format). Every release is SHA-256 checksummed and cosign keyless-signed; verify with `cosign verify-blob`.
 
 ## Distribution
 
