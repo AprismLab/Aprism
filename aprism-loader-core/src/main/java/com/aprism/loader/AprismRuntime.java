@@ -76,7 +76,9 @@ public final class AprismRuntime {
     private final Map<String, LoadedBedrockModContainer> bedrockMods = new LinkedHashMap<>();
     private final Map<String, LoadedExtensionContainer> extensionContainers = new LinkedHashMap<>();
     private Path extensionTempDir;
+    private Path modTempDir;
     private Instrumentation instrumentation;
+    private LoadReport loadReport;
 
     private String aprismVersion;
     private String mcEdit;
@@ -217,6 +219,14 @@ public final class AprismRuntime {
     }
 
     /**
+     * @return the startup load report for this boot, or {@code null} before
+     *         {@link #bootstrapProduction(Path, String)} has run
+     */
+    public LoadReport getLoadReport() {
+        return loadReport;
+    }
+
+    /**
      * Backwards-compatible initializer that does not bind version metadata.
      * Equivalent to {@code initialize(inst, null, null, null)}. Use the
      * versioned overload for any real runtime; this exists for tests and
@@ -249,6 +259,9 @@ public final class AprismRuntime {
         ensureInitialized();
         loadedExtensions.clear();
         extensionContainers.clear();
+        if (loadReport != null) {
+            loadReport.beginPhase1();
+        }
 
         // Phase 1a: validate and register manifest-driven loader-support folders
         List<ExtensionLoader.LoadedExtension> raw = extensionLoader.load(extensionsDir);
@@ -259,11 +272,31 @@ public final class AprismRuntime {
             extractExtensionJars(ext.sourcePath());
         }
 
-        // Phase 1c: instantiate entrypoints and invoke onInitialize
+        // Phase 1c: instantiate entrypoints and invoke onInitialize. A failing
+        // extension is isolated (logged + reported) so one broken extension
+        // cannot take down the whole boot.
         for (ExtensionLoader.LoadedExtension ext : raw) {
-            instantiateExtension(ext);
+            long t0 = System.nanoTime();
+            try {
+                instantiateExtension(ext);
+                if (loadReport != null) {
+                    loadReport.recordOk("extension", ext.manifest().extensionId(),
+                            ext.manifest().loaderRange(), (System.nanoTime() - t0) / 1_000_000);
+                }
+            } catch (RuntimeException e) {
+                long ms = (System.nanoTime() - t0) / 1_000_000;
+                LOG.warning("Extension " + ext.manifest().extensionId()
+                        + " failed to initialize; skipping it: " + e.getMessage());
+                if (loadReport != null) {
+                    loadReport.recordFailure("extension", ext.manifest().extensionId(),
+                            ext.manifest().loaderRange(), ms, String.valueOf(e.getMessage()));
+                }
+            }
         }
 
+        if (loadReport != null) {
+            loadReport.endPhase1();
+        }
         LOG.info("Loaded " + extensionContainers.size() + " Aprism extension(s); "
                 + extensionLoader.getLoaderFolders().size() + " loader-support folder(s) registered");
         return List.copyOf(extensionContainers.values());
@@ -351,6 +384,24 @@ public final class AprismRuntime {
     }
 
     /**
+     * Lazily creates a temporary directory for extracted mod jars. Kept
+     * separate from the extension temp dir so mod and extension artifacts do
+     * not collide (Alpha 4 production hardening).
+     *
+     * @return the mod temp directory path
+     */
+    private Path getModTempDir() {
+        if (modTempDir == null) {
+            try {
+                modTempDir = Files.createTempDirectory("aprism-mods");
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to create mod temp directory", e);
+            }
+        }
+        return modTempDir;
+    }
+
+    /**
      * Phase 2: scans mod folders, resolves dependencies in topological order,
      * and adds every discovered mod jar to the shared class space. Scans the
      * Aprism native {@code mods/} folder plus every loader folder registered
@@ -396,29 +447,52 @@ public final class AprismRuntime {
                 discovered.stream().map(ModDiscoverer.DiscoveredMod::manifest).toList(),
                 environment);
 
-        // Register to classloader in dependency order
+        // Register to classloader in dependency order. A single mod that
+        // fails to register is isolated (logged + reported) so one broken mod
+        // cannot abort the whole boot.
+        if (loadReport != null) {
+            loadReport.beginPhase2();
+        }
         mods.clear();
         for (ModContainer mc : ordered) {
             ModDiscoverer.DiscoveredMod dm = discoveredById.get(mc.getId());
             if (dm == null) {
                 continue;
             }
-            if (dm.format() == ModDiscoverer.ModFormat.AJE) {
-                // A .aje is a ZIP wrapper: the executable mod classes live in
-                // the embedded <modid>.jar (and optional lib/ jars). Extract
-                // them to a temp directory and add those to the classloader;
-                // a URLClassLoader cannot read classes from a nested archive.
-                extractModJars(dm);
-            } else {
-                // Plain .jar / .litemod: the archive itself is the classpath entry
-                classLoader.addModJar(dm.path());
+            long t0 = System.nanoTime();
+            try {
+                if (dm.format() == ModDiscoverer.ModFormat.AJE) {
+                    // A .aje is a ZIP wrapper: the executable mod classes live in
+                    // the embedded <modid>.jar (and optional lib/ jars). Extract
+                    // them to a temp directory and add those to the classloader;
+                    // a URLClassLoader cannot read classes from a nested archive.
+                    extractModJars(dm);
+                } else {
+                    // Plain .jar / .litemod: the archive itself is the classpath entry
+                    classLoader.addModJar(dm.path());
+                }
+                LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
+                mods.put(container.getId(), container);
+                // Register the mod's mixin configs (if any) with the Mixin environment
+                registerMixins(dm.manifest());
+                // Register the mod's access widener (if any) with the transformer
+                registerAccessWidener(dm.manifest(), dm.path());
+                if (loadReport != null) {
+                    loadReport.recordOk("mod", container.getId(), container.getVersion(),
+                            (System.nanoTime() - t0) / 1_000_000);
+                }
+            } catch (RuntimeException e) {
+                long ms = (System.nanoTime() - t0) / 1_000_000;
+                LOG.warning("Mod " + dm.manifest().id() + " failed to load; skipping it: "
+                        + e.getMessage());
+                if (loadReport != null) {
+                    loadReport.recordFailure("mod", dm.manifest().id(), dm.manifest().version(),
+                            ms, String.valueOf(e.getMessage()));
+                }
             }
-            LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
-            mods.put(container.getId(), container);
-            // Register the mod's mixin configs (if any) with the Mixin environment
-            registerMixins(dm.manifest());
-            // Register the mod's access widener (if any) with the transformer
-            registerAccessWidener(dm.manifest(), dm.path());
+        }
+        if (loadReport != null) {
+            loadReport.endPhase2();
         }
         LOG.info("Loaded " + mods.size() + " mod(s) across " + (loaderFolders.size() + 1) + " folder(s)");
     }
@@ -449,7 +523,7 @@ public final class AprismRuntime {
             }
             for (Path jar : jars) {
                 String name = jar.getFileName().toString();
-                Path target = getExtensionTempDir().resolve(modId + "_" + name);
+                Path target = getModTempDir().resolve(modId + "_" + name);
                 try (InputStream is = Files.newInputStream(jar)) {
                     Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
                 }
@@ -509,6 +583,7 @@ public final class AprismRuntime {
      */
     public void bootstrapProduction(Path gameRoot, String side) throws DependencyResolutionException {
         ensureInitialized();
+        loadReport = new LoadReport();
         performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
         invokeCommonLifecycle();
         AprismPhase sidePhase = sidePhaseFor(side);
@@ -516,6 +591,9 @@ public final class AprismRuntime {
             LOG.info("Dispatching side phase: " + sidePhase);
             invokeEntrypoints(sidePhase);
         }
+        // Emit the startup load report (timing + per-unit outcomes) so
+        // launcher users can see exactly what loaded and what failed.
+        LOG.info("\n" + loadReport.toSummary(aprismVersion));
     }
 
     /**
@@ -653,6 +731,12 @@ public final class AprismRuntime {
             } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("Failed to invoke entrypoint " + className
                         + " for mod " + container.getId() + " in phase " + phase, e);
+            } catch (RuntimeException e) {
+                // A mod throwing during its own entrypoint is isolated so it
+                // cannot abort the lifecycle of the remaining mods.
+                LOG.warning("Mod " + container.getId() + " threw in phase " + phase
+                        + "; skipping its remaining entrypoints: " + e);
+                break;
             }
         }
     }
@@ -909,8 +993,32 @@ public final class AprismRuntime {
         bedrockMods.clear();
         loadedExtensions.clear();
         extensionContainers.clear();
+        loadReport = null;
         cleanupExtensionTempDir();
+        cleanupModTempDir();
         AprismMixinBootstrap.reset();
+    }
+
+    /**
+     * Deletes the temporary directory used for extracted mod jars.
+     */
+    private void cleanupModTempDir() {
+        if (modTempDir == null) {
+            return;
+        }
+        try (var stream = Files.walk(modTempDir)) {
+            stream.sorted(java.util.Comparator.reverseOrder())
+                  .forEach(p -> {
+                      try {
+                          Files.deleteIfExists(p);
+                      } catch (IOException ignored) {
+                          // best-effort cleanup
+                      }
+                  });
+        } catch (IOException e) {
+            LOG.warning("Failed to clean up mod temp directory: " + e.getMessage());
+        }
+        modTempDir = null;
     }
 
     /**
