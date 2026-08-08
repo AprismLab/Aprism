@@ -68,11 +68,52 @@ public final class AprismMixinBootstrap {
                 MixinBootstrap.init();
                 environmentInitialized = true;
                 LOG.info("SpongePowered Mixin environment initialized (service: Aprism)");
+                alignCompatibilityLevel();
             } catch (Throwable t) {
                 LOG.log(java.util.logging.Level.SEVERE, "Failed to initialize Mixin environment", t);
             }
         }
         acquireTransformer();
+    }
+
+    /**
+     * Aligns the Mixin environment's compatibility level with the running JVM.
+     *
+     * <p>Why this is necessary: a mod's mixin config that omits
+     * {@code compatibilityLevel} defaults to the <em>environment's</em> current
+     * level. If that default level fails Mixin's support check for the active
+     * JRE/ASM combination, loading the config throws
+     * "The requested compatibility level ... could not be set". By raising the
+     * environment level up-front to the highest level the running JVM supports,
+     * mod configs load without triggering that check (a config whose level equals
+     * the environment level short-circuits). This is what makes third-party mixin
+     * configs weave on modern JVMs (e.g. Java 25 for Minecraft 26.x).
+     *
+     * <p>We try levels from highest to lowest and set the first one Mixin
+     * accepts, so a restrictive ASM/JRE combination degrades gracefully instead
+     * of aborting all mixins.
+     */
+    private static void alignCompatibilityLevel() {
+        MixinEnvironment env = MixinEnvironment.getDefaultEnvironment();
+        MixinEnvironment.CompatibilityLevel current = env.getCompatibilityLevel();
+        MixinEnvironment.CompatibilityLevel[] levels = MixinEnvironment.CompatibilityLevel.values();
+        // Walk from the highest level down; attempt to set each and adopt the
+        // first one the environment accepts. On a modern JRE the highest levels
+        // are accepted (e.g. JAVA_25 on Java 25); on an older JRE the high ones
+        // throw and we degrade gracefully to the highest supported level.
+        for (int i = levels.length - 1; i >= 0; i--) {
+            MixinEnvironment.CompatibilityLevel candidate = levels[i];
+            try {
+                MixinEnvironment.setCompatibilityLevel(candidate);
+                LOG.info("Mixin compatibility level aligned to " + candidate
+                        + " for JRE " + Runtime.version().feature());
+                return;
+            } catch (Throwable ignored) {
+                // This level is not supported by the active JRE/ASM; try a lower one.
+            }
+        }
+        LOG.info("Mixin compatibility level left at " + current
+                + " (no higher level accepted by JRE " + Runtime.version().feature() + ")");
     }
 
     /**

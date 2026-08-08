@@ -1,0 +1,30 @@
+// Real-game Mixin weaving proof mod (v26.0-Alpha.9).
+// Injects into net.minecraft.client.Minecraft.<init> and prints a marker so the
+// smoke harness can assert that Aprism's Mixin path weaves into genuine
+// Minecraft bytecode at load time.
+
+plugins {
+    id 'java'
+    id 'com.aprism.packaging'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+dependencies {
+    compileOnly project(':aprism-api')
+    // Mixin annotations only (compile-time); the runtime Mixin framework is
+    // provided by the Aprism agent jar (unrelocated) at game launch.
+    compileOnly libs.mixin
+}
+
+aprismPackaging {
+    manifestFile = 'aprism.manifest.json'
+}
+
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Mixin Weaving Proof',
+                   'Implementation-Version': project.version
+    }
+}

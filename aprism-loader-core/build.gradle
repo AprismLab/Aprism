@@ -42,9 +42,16 @@ shadowJar {
             'Implementation-Version': project.version
         )
     }
-    relocate 'org.objectweb.asm', 'aprism.libs.asm'
     relocate 'com.google.gson', 'aprism.libs.gson'
-    relocate 'org.spongepowered.asm', 'aprism.libs.mixin'
+    // ASM is deliberately NOT relocated: SpongePowered Mixin detects the ASM
+    // version via org.objectweb.asm to decide which Java class-file versions it
+    // can weave. Relocating ASM breaks that detection (it then reports ASM 9.0
+    // and refuses to weave modern Java-25 Minecraft classes). Vanilla MC ships no
+    // ASM, so leaving it at org.objectweb.asm causes no clash.
+    // Mixin is deliberately NOT relocated: third-party mods compile their mixin
+    // classes against the standard org.spongepowered.asm.mixin annotations, so
+    // the Mixin framework must stay at that package for mod mixins to be
+    // recognized and woven. Vanilla MC ships no Mixin, so there is no clash.
     mergeServiceFiles()
     exclude 'META-INF/*.SF'
     exclude 'META-INF/*.DSA'
@@ -55,4 +62,46 @@ shadowJar {
     exclude 'META-INF/services/javax.annotation.processing.Processor'
     exclude 'META-INF/services/cpw.mods.modlauncher.*'
     exclude 'META-INF/services/org.spongepowered.tools.obfuscation.service.IObfuscationService'
+
+    // Inject a per-package MANIFEST section for org.objectweb.asm AFTER the jar
+    // is assembled, so SpongePowered Mixin's ASM-version detection reads the REAL
+    // ASM version (from the version catalog) instead of the fat jar's polluted
+    // Implementation-Version (the Aprism version). Mixin derives its maximum
+    // weavable class-file version from the detected ASM version; a polluted
+    // version makes it cap at Java 16 and refuse modern (Java-25) classes.
+    // NOTE: asmVersion is captured at CONFIGURATION time (outside the action) so
+    // the closure stays configuration-cache-safe (no project/logger access inside).
+    def asmVersion = libs.versions.asm.get()
+    doLast {
+        def jarFile = archiveFile.get().asFile
+        def tmp = new File(jarFile.parentFile, jarFile.name + ".tmp")
+        def manifest = new java.util.jar.Manifest()
+        manifest.mainAttributes.putValue('Manifest-Version', '1.0')
+        new java.util.jar.JarFile(jarFile).withCloseable { src ->
+            // Copy main attributes from the built jar (Premain-Class, etc.)
+            def srcMain = src.manifest.mainAttributes
+            srcMain.keySet().each { k -> manifest.mainAttributes.putValue(k.toString(), srcMain.getValue(k)) }
+            // Add the named section for the ASM package
+            def asmAttrs = new java.util.jar.Attributes()
+            asmAttrs.putValue('Implementation-Title', 'ASM, a very small and fast Java bytecode manipulation framework')
+            asmAttrs.putValue('Implementation-Version', asmVersion)
+            manifest.entries.put('org/objectweb/asm/', asmAttrs)
+            // Rewrite the jar with the augmented manifest (skip duplicate names
+            // that shadow's merged jar may contain, e.g. repeated maven metadata).
+            new java.util.jar.JarOutputStream(new java.io.FileOutputStream(tmp), manifest).withCloseable { jos ->
+                def seen = new HashSet<String>()
+                def entries = src.entries()
+                while (entries.hasMoreElements()) {
+                    def e = entries.nextElement()
+                    if (e.name == 'META-INF/MANIFEST.MF') continue
+                    if (!seen.add(e.name)) continue
+                    jos.putNextEntry(new java.util.zip.ZipEntry(e.name))
+                    if (!e.isDirectory()) src.getInputStream(e).transferTo(jos)
+                    jos.closeEntry()
+                }
+            }
+        }
+        jarFile.delete()
+        tmp.renameTo(jarFile)
+    }
 }

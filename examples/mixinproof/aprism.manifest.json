@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "mixinproof",
+  "version": "1.0.0",
+  "displayName": "Mixin Weaving Proof",
+  "description": "Proves Aprism weaves Mixin into genuine Minecraft bytecode at load time (v26.0-Alpha.9). Injects into Minecraft.<init> and prints a marker.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.mixinproof.MixinProofMod"]
+  },
+  "mixins": ["mixinproof.mixins.json"],
+  "depends": {},
+  "platforms": {},
+  "accessWidener": null,
+  "provides": [],
+  "custom": {}
+}
