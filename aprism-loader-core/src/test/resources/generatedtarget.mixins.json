@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.aprism.loader.mixintest",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "GeneratedTargetMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

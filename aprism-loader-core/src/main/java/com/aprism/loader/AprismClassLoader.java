@@ -151,6 +151,20 @@ public final class AprismClassLoader extends URLClassLoader {
     }
 
     /**
+     * Returns whether the given class has already been defined (loaded) by this
+     * classloader. Unlike {@link Class#forName}, this does NOT trigger class
+     * loading — it only checks the already-defined class table. Used by the
+     * Mixin service's class tracker to determine whether a target class was
+     * "loaded too early" without inadvertently loading it.
+     *
+     * @param name the binary class name
+     * @return true if the class is already defined in this loader
+     */
+    public boolean isClassDefined(String name) {
+        return findLoadedClass(name) != null;
+    }
+
+    /**
      * Defines a package with the given name, returning the existing package if
      * one is already defined.
      *

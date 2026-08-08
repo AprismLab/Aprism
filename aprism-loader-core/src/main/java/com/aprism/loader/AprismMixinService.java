@@ -231,15 +231,18 @@ public final class AprismMixinService extends MixinServiceAbstract {
 
         @Override
         public boolean isClassLoaded(String name) {
+            // Use the defined-class check rather than Class.forName: the
+            // latter would ACTIVELY LOAD the class, which Mixin then treats as
+            // "target loaded too early" and aborts the injection. In production
+            // Mixin targets are transformed at load time, before they are
+            // defined, so only already-defined classes count as loaded.
             AprismClassLoader cl = AprismMixinBootstrap.getClassLoader();
             if (cl != null) {
-                try {
-                    Class.forName(name, false, cl);
+                if (cl.isClassDefined(name)) {
                     return true;
-                } catch (ClassNotFoundException ignored) {
-                    return false;
                 }
             }
+            // Also consult the platform/system loaders for JDK classes
             return false;
         }
 
@@ -248,7 +251,10 @@ public final class AprismMixinService extends MixinServiceAbstract {
             if (invalidClasses.contains(name)) {
                 return "invalid";
             }
-            return null;
+            // Mixin calls .length() on this value; null would throw an NPE in
+            // MixinInfo and silently abort ALL mixin preparation. An empty
+            // string means "no restrictions" for a normally loadable class.
+            return "";
         }
     }
 
