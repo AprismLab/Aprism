@@ -128,7 +128,7 @@ class ForgeSupportIntegrationTest {
                   "type": "loader-support",
                   "aprismRange": "[26.0.0,27.0.0)",
                   "loaderKey": "Fo",
-                  "loaderRange": "[47.0.0,48.0.0)",
+                  "loaderRange": "[54.0.0,55.0.0)",
                   "mcEdit": null,
                   "mcVersion": null,
                   "entrypoint": "com.aprism.ext.forge.ForgeSupportExtension",

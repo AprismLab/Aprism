@@ -46,7 +46,7 @@ class RefractForgeAepE2ETest {
     /** The Refract-built Forge-Support .aep produced by the forge branch. */
     private static final Path REFRACT_AEP = Paths.get(
             "..", "..", "AprismRefract", "build", "aprism",
-            "Forge-Support-A[26.0,27.0)-Fo[47.0,48.0)-JE-26.2.aep");
+            "Forge-Support-A[26.0,27.0)-Fo[54.0,55.0)-JE-26.2.aep");
 
     private static final String MOD_CLASS = "com.aprism.loader.testmods.ForgeRecordingMod";
 
