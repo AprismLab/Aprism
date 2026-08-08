@@ -89,10 +89,12 @@ public final class AprismAgent {
             }
 
             // Production trigger: when gameRoot is supplied, run the two-phase
-            // load and the common lifecycle synchronously inside premain.
+            // load and the common lifecycle synchronously inside premain. The
+            // optional `side` arg (client|server) additionally dispatches the
+            // CLIENT or SERVER phase after the common lifecycle.
             String gameRootArg = kv.get("gameRoot");
             if (gameRootArg != null && !gameRootArg.isBlank()) {
-                runtime.bootstrapProduction(Path.of(gameRootArg));
+                runtime.bootstrapProduction(Path.of(gameRootArg), kv.get("side"));
             }
         } catch (Throwable t) {
             // Never terminate the game JVM from the agent. Record the failure

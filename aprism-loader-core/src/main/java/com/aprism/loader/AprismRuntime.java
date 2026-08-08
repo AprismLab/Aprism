@@ -30,6 +30,7 @@ import com.aprism.loader.remap.McProfile;
 import com.aprism.loader.remap.Remapper;
 import com.aprism.loader.remap.TinyMappings;
 import com.aprism.loader.remap.TinyRemapper;
+import com.aprism.loader.bridge.FabricEntrypointBridge;
 import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.DependencyResolutionException;
@@ -484,9 +485,47 @@ public final class AprismRuntime {
      * @throws DependencyResolutionException if dependencies cannot be resolved (JE only)
      */
     public void bootstrapProduction(Path gameRoot) throws DependencyResolutionException {
+        bootstrapProduction(gameRoot, null);
+    }
+
+    /**
+     * Production bootstrap with an explicit distribution side. After the
+     * common lifecycle (PREINIT -> INIT -> SETUP -> COMPLETE), the side phase
+     * is dispatched: {@link AprismPhase#CLIENT} for {@code side=client},
+     * {@link AprismPhase#SERVER} for {@code side=server}. A {@code null} or
+     * unrecognized side skips the side phase (premain cannot determine the
+     * distribution side on its own; the launcher supplies it).
+     *
+     * @param gameRoot the game instance root (e.g. the {@code .minecraft} directory)
+     * @param side     the distribution side ({@code client}, {@code server}, or {@code null})
+     * @throws DependencyResolutionException if dependencies cannot be resolved (JE only)
+     */
+    public void bootstrapProduction(Path gameRoot, String side) throws DependencyResolutionException {
         ensureInitialized();
         performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
         invokeCommonLifecycle();
+        AprismPhase sidePhase = sidePhaseFor(side);
+        if (sidePhase != null) {
+            LOG.info("Dispatching side phase: " + sidePhase);
+            invokeEntrypoints(sidePhase);
+        }
+    }
+
+    /**
+     * Maps the {@code side} agent argument to a distribution phase.
+     *
+     * @param side the side argument ({@code client}, {@code server}, or {@code null})
+     * @return the corresponding phase, or {@code null} if the side is absent or unrecognized
+     */
+    private static AprismPhase sidePhaseFor(String side) {
+        if (side == null) {
+            return null;
+        }
+        return switch (side.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "client" -> AprismPhase.CLIENT;
+            case "server" -> AprismPhase.SERVER;
+            default -> null;
+        };
     }
 
     /**
@@ -588,16 +627,21 @@ public final class AprismRuntime {
             return;
         }
         AprismContext context = new AprismContextImpl(container, eventBus, registry);
+        boolean isFabric = ModDiscoverer.FABRIC_KEY.equals(container.getLoaderKey());
         for (String className : entrypoints) {
             try {
                 Class<?> clazz = classLoader.loadClass(className);
                 Object instance = clazz.getDeclaredConstructor().newInstance();
                 if (instance instanceof IAprismMod mod) {
+                    // Aprism-native mod: full lifecycle dispatch
                     invokePhaseMethod(mod, context, phase);
-                    // Retain the first instantiated instance on the container
-                    if (container.getInstance() == null) {
-                        container.setInstance(instance);
-                    }
+                } else if (isFabric) {
+                    // Fabric mod: invoke the Fabric-convention entrypoint
+                    FabricEntrypointBridge.invoke(instance, phase);
+                }
+                // Retain the first instantiated instance on the container
+                if (container.getInstance() == null) {
+                    container.setInstance(instance);
                 }
             } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("Failed to invoke entrypoint " + className

@@ -35,6 +35,9 @@ public final class ModDiscoverer {
     /** Aprism native loader key (no extension needed). */
     public static final String APRISM_NATIVE = "aprism";
 
+    /** Fabric loader key (registered by Fabric-Support.aep). */
+    public static final String FABRIC_KEY = "Fa";
+
     /** The archive format of a discovered mod. */
     public enum ModFormat { AJE, JAR, LITEMOD }
 
