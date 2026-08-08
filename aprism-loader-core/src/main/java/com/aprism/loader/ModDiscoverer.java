@@ -38,6 +38,13 @@ public final class ModDiscoverer {
     /** Fabric loader key (registered by Fabric-Support.aep). */
     public static final String FABRIC_KEY = "Fa";
 
+    /**
+     * The Fabric Loader version that Aprism's Fabric-Support emulates. Fabric
+     * mods declare {@code depends.fabricloader} ranges against this value; it
+     * mirrors the loader version in {@code gradle/libs.versions.toml}.
+     */
+    public static final String FABRIC_LOADER_VERSION = "0.16.14";
+
     /** The archive format of a discovered mod. */
     public enum ModFormat { AJE, JAR, LITEMOD }
 

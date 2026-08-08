@@ -119,7 +119,7 @@ public final class ExtensionLoader {
         }
         try {
             VersionRange range = VersionRange.parse(m.aprismRange());
-            if (!range.contains(aprismVersion)) {
+            if (!range.contains(normalizeAprismVersion(aprismVersion))) {
                 return false;
             }
         } catch (IllegalArgumentException e) {
@@ -132,6 +132,37 @@ public final class ExtensionLoader {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Normalizes the running Aprism Loader version into the plain release form
+     * used for {@code aprismRange} comparison. The runtime version carries a
+     * {@code v} prefix and a stability/prerelease suffix (e.g.
+     * {@code v26.0-Alpha.3}); SemVer range matching rejects both. This strips
+     * the leading {@code v} and the prerelease/build suffix so that
+     * {@code v26.0-Alpha.3} matches against a range written for its release
+     * line (e.g. {@code [26.0.0,27.0.0)}).
+     *
+     * @param version the raw runtime version
+     * @return the plain release form, or the input unchanged when it cannot be normalized
+     */
+    private static String normalizeAprismVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return version;
+        }
+        String v = version.trim();
+        if (v.startsWith("v")) {
+            v = v.substring(1);
+        }
+        int dash = v.indexOf('-');
+        if (dash >= 0) {
+            v = v.substring(0, dash);
+        }
+        int plus = v.indexOf('+');
+        if (plus >= 0) {
+            v = v.substring(0, plus);
+        }
+        return v;
     }
 
     private static String loaderKeyToFolder(String loaderKey) {

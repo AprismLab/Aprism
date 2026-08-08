@@ -41,6 +41,30 @@ public final class DependencyResolver {
      * @throws DependencyResolutionException if a dependency is missing, conflicts, or forms a cycle
      */
     public List<ModContainer> resolve(Collection<AprismManifest> manifests) throws DependencyResolutionException {
+        return resolve(manifests, Map.of());
+    }
+
+    /**
+     * Resolves the load order for the given manifests against a provided
+     * runtime environment.
+     *
+     * <p>Fabric mods routinely declare dependencies on the <em>environment</em>
+     * rather than on other mods, e.g. {@code fabricloader >= 0.14.21} or
+     * {@code minecraft >=1.21.4 <1.22}. Those ids do not correspond to any mod
+     * jar on disk; they are satisfied by the loader, the game, and the JVM.
+     * The {@code environment} map supplies the versions for such environment
+     * ids (for example {@code fabricloader=0.16.0}, {@code minecraft=1.21.4},
+     * {@code java=21}). When a {@code depends} key is found in the environment
+     * map it is validated against the environment version and never treated as
+     * a missing mod.
+     *
+     * @param manifests   the manifests to resolve
+     * @param environment environment-provided ids mapped to their versions
+     * @return the manifests' mod containers in dependency order
+     * @throws DependencyResolutionException if a dependency is missing, conflicts, or forms a cycle
+     */
+    public List<ModContainer> resolve(Collection<AprismManifest> manifests,
+            Map<String, String> environment) throws DependencyResolutionException {
         Map<String, AprismManifest> byId = new LinkedHashMap<>();
         for (AprismManifest m : manifests) {
             if (byId.put(m.id(), m) != null) {
@@ -54,17 +78,32 @@ public final class DependencyResolver {
                 continue;
             }
             for (Map.Entry<String, String> dep : m.depends().entrySet()) {
-                AprismManifest target = byId.get(dep.getKey());
+                String depId = dep.getKey();
+                String depRange = dep.getValue();
+
+                // Environment-provided dependency (loader, game, java, ...):
+                // validate against the environment version, not another mod.
+                if (environment.containsKey(depId)) {
+                    String envVersion = environment.get(depId);
+                    if (!rangeSatisfies(envVersion, depRange)) {
+                        throw new DependencyResolutionException(
+                                "Mod " + m.id() + " requires environment " + depId + " "
+                                        + depRange + " but found " + envVersion);
+                    }
+                    continue;
+                }
+
+                AprismManifest target = byId.get(depId);
                 if (target == null) {
                     throw new DependencyResolutionException(
-                            "Mod " + m.id() + " requires missing dependency " + dep.getKey());
+                            "Mod " + m.id() + " requires missing dependency " + depId);
                 }
-                if (!versionSatisfies(target.version(), dep.getValue())) {
+                if (!rangeSatisfies(target.version(), depRange)) {
                     throw new DependencyResolutionException(
-                            "Mod " + m.id() + " requires " + dep.getKey() + " " + dep.getValue()
+                            "Mod " + m.id() + " requires " + depId + " " + depRange
                                     + " but found " + target.version());
                 }
-                edges.add(new DependencyEdge(m.id(), dep.getKey(), dep.getValue()));
+                edges.add(new DependencyEdge(m.id(), depId, depRange));
             }
         }
 
@@ -123,26 +162,27 @@ public final class DependencyResolver {
     }
 
     /**
-     * Simplified version-range check. Accepts {@code *}, exact matches, and
-     * basic prefix/range expressions.
+     * Checks whether a concrete version satisfies a range expression, using the
+     * full Aprism/SemVer {@link VersionRange} (which understands comparators,
+     * tilde, caret, comma/space-AND, and Maven brackets). A {@code null},
+     * empty, or {@code *} range matches anything. An unparseable range or
+     * version falls back to "satisfied" so that non-conforming manifests do
+     * not block the load; the manifest validator is the authoritative gate.
      *
      * @param actual the available version
      * @param range  the required range expression
      * @return whether {@code actual} satisfies {@code range}
      */
-    private boolean versionSatisfies(String actual, String range) {
-        if (range == null || range.isEmpty() || range.equals("*")) {
+    private boolean rangeSatisfies(String actual, String range) {
+        if (range == null || range.isEmpty() || "*".equals(range.trim())) {
             return true;
         }
-        if (range.equals(actual)) {
+        try {
+            return VersionRange.parse(range).contains(actual);
+        } catch (IllegalArgumentException e) {
+            // Non-conforming range or version: do not block on it here.
             return true;
         }
-        if (range.startsWith("[") || range.startsWith("(")) {
-            String inner = range.replaceAll("[\\[\\]()]", "");
-            String lower = inner.split(",")[0].trim();
-            return !lower.isEmpty() && actual.startsWith(lower);
-        }
-        return actual.startsWith(range);
     }
 
     /**

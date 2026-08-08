@@ -384,10 +384,17 @@ public final class AprismRuntime {
             discoveredById.put(dm.manifest().id(), dm);
         }
 
-        // Resolve dependencies: validates versions, detects cycles, returns ids in load order
+        // Resolve dependencies: validates versions, detects cycles, returns ids in load order.
+        // The environment map supplies the versions for environment-provided ids
+        // (loader, game, java) that Fabric mods declare but that are not mods.
+        Map<String, String> environment = new HashMap<>();
+        environment.put("minecraft", mcVersion != null ? mcVersion : "");
+        environment.put("fabricloader", ModDiscoverer.FABRIC_LOADER_VERSION);
+        environment.put("java", Integer.toString(Runtime.version().feature()));
         DependencyResolver resolver = new DependencyResolver();
         List<ModContainer> ordered = resolver.resolve(
-                discovered.stream().map(ModDiscoverer.DiscoveredMod::manifest).toList());
+                discovered.stream().map(ModDiscoverer.DiscoveredMod::manifest).toList(),
+                environment);
 
         // Register to classloader in dependency order
         mods.clear();

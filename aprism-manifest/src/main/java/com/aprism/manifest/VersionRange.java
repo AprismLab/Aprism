@@ -27,6 +27,14 @@ public final class VersionRange {
     private static final Pattern SEMVER =
             Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?(?:\\+([0-9A-Za-z.-]+))?$");
 
+    /**
+     * Two-segment versions (e.g. {@code 26.2}, {@code 1.21}) are common in
+     * Minecraft version strings. They are normalized to three segments by
+     * appending {@code .0} before parsing.
+     */
+    private static final Pattern TWO_SEGMENT =
+            Pattern.compile("^(\\d+)\\.(\\d+)(?:-([0-9A-Za-z.-]+))?(?:\\+([0-9A-Za-z.-]+))?$");
+
     private final List<Clause> clauses;
     private final String original;
 
@@ -53,7 +61,10 @@ public final class VersionRange {
         if (trimmed.startsWith("[") || trimmed.startsWith("(")) {
             parseMavenBracket(trimmed, clauses);
         } else {
-            for (String part : trimmed.split(",")) {
+            // Split on whitespace and/or commas. Fabric-style ranges use a
+            // space as the AND separator (e.g. {@code >=1.21.4 <1.22}); Aprism
+            // and Maven-style ranges use commas. Both are AND.
+            for (String part : trimmed.split("[\\s,]+")) {
                 String p = part.trim();
                 if (p.isEmpty()) {
                     continue;
@@ -215,6 +226,16 @@ public final class VersionRange {
                 t = t.substring(1).trim();
             }
             Matcher m = SEMVER.matcher(t);
+            if (!m.matches()) {
+                // Two-segment Minecraft versions (e.g. 26.2, 1.21): normalize
+                // to three segments by appending .0.
+                Matcher two = TWO_SEGMENT.matcher(t);
+                if (two.matches()) {
+                    t = two.group(1) + "." + two.group(2) + ".0"
+                            + (two.group(3) == null ? "" : "-" + two.group(3));
+                    m = SEMVER.matcher(t);
+                }
+            }
             if (!m.matches()) {
                 throw new IllegalArgumentException(
                         "CHKAPRISM-RANGE-001: invalid SemVer '" + t + "'");
