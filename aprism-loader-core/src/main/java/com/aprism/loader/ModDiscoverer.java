@@ -55,6 +55,37 @@ public final class ModDiscoverer {
      */
     public static final String NEOFORGE_LOADER_VERSION = "21.4.0-beta";
 
+    /** Forge loader key (registered by Forge-Support.aep). */
+    public static final String FORGE_KEY = "Fo";
+
+    /**
+     * The Forge version that Aprism Forge-Support emulates. Forge mods may
+     * declare {@code depends.forge} ranges against this value; it mirrors the
+     * {@code forge} entry in gradle/libs.versions.toml (the Forge line for
+     * Minecraft 1.21.4).
+     */
+    public static final String FORGE_LOADER_VERSION = "54.0.0";
+
+    /** Quilt loader key (registered by Quilt-Support.aep). */
+    public static final String QUILT_KEY = "Q";
+
+    /**
+     * The Quilt Loader version that Aprism Quilt-Support emulates. Quilt mods
+     * may declare {@code depends.quilt_loader} ranges against this value; it
+     * mirrors the {@code quilt-loader} entry in gradle/libs.versions.toml.
+     */
+    public static final String QUILT_LOADER_VERSION = "0.29.2";
+
+    /** LiteLoader key (registered by LiteLoader-Support.aep). */
+    public static final String LITELOADER_KEY = "L";
+
+    /**
+     * The LiteLoader version that Aprism LiteLoader-Support emulates.
+     * LiteLoader mods rarely declare loader dependencies, but the environment
+     * exposes this value for {@code depends.liteloader} resolution.
+     */
+    public static final String LITELOADER_LOADER_VERSION = "1.12.2";
+
     /** The archive format of a discovered mod. */
     public enum ModFormat { AJE, JAR, LITEMOD }
 
@@ -160,7 +191,13 @@ public final class ModDiscoverer {
                             folder.getFileName().toString()));
                 }
             } else if (name.endsWith(".jar")) {
-                AprismManifest m = parser.tryParseFabricManifest(file)
+                // Quilt first: Quilt mods carry quilt.mod.json (and sometimes a
+                // fabric.mod.json compat stub too); the native Quilt projection
+                // preserves the quilt_loader entrypoints that the compat stub
+                // would lose. Fabric mods never carry quilt.mod.json, so this
+                // ordering cannot misroute a pure Fabric mod.
+                AprismManifest m = parser.tryParseQuiltManifest(file)
+                        .or(() -> parser.tryParseFabricManifest(file))
                         .or(() -> parser.tryParseNeoForgeManifest(file))
                         .or(() -> parser.tryParseLegacyForgeManifest(file))
                         .orElse(null);

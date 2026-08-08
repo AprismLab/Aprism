@@ -8,11 +8,11 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.aprism.manifest.fallback.ForgeManifestReader;
 import com.aprism.manifest.fallback.NeoForgeManifestReader;
 import com.google.gson.Gson;
 
@@ -29,6 +29,7 @@ public final class ManifestParser {
     private static final Gson GSON = new Gson();
 
     private static final String FABRIC_MANIFEST = "fabric.mod.json";
+    private static final String QUILT_MANIFEST = "quilt.mod.json";
     private static final String NEOFORGE_MANIFEST = "META-INF/neoforge.mods.toml";
     private static final String FORGE_MANIFEST = "META-INF/mods.toml";
     private static final String LEGACY_FORGE_MANIFEST = "mcmod.info";
@@ -92,6 +93,101 @@ public final class ManifestParser {
     }
 
     /**
+     * Attempts to parse a Quilt manifest ({@code quilt.mod.json}) from a jar.
+     *
+     * <p>Quilt's manifest is a superset of Fabric's: identity fields live under
+     * {@code quilt_loader} (id, version, entrypoints) and display metadata
+     * under {@code quilt_loader.metadata} (name, description). Entrypoint keys
+     * follow the Fabric convention ({@code init}, {@code client},
+     * {@code server}), so the projected manifest reuses Fabric-style
+     * entrypoint dispatch through the Quilt bridge.
+     *
+     * @param jarFile the jar path
+     * @return the converted manifest, or empty if no Quilt manifest is present
+     */
+    public Optional<AprismManifest> tryParseQuiltManifest(Path jarFile) {
+        return readJarEntry(jarFile, QUILT_MANIFEST).map(json -> {
+            QuiltModJson qmj = GSON.fromJson(json, QuiltModJson.class);
+            QuiltModJson.Loader loader = qmj.quilt_loader != null
+                    ? qmj.quilt_loader : new QuiltModJson.Loader();
+            QuiltModJson.Metadata meta = loader.metadata != null
+                    ? loader.metadata : new QuiltModJson.Metadata();
+            String id = nullTo(loader.id, "");
+            Map<String, List<String>> entrypoints = normalizeQuiltEntrypoints(loader.entrypoints);
+            return new AprismManifest(
+                    1,
+                    id,
+                    nullTo(loader.version, ""),
+                    nullTo(meta.name, id),
+                    nullTo(meta.description, ""),
+                    "*",
+                    entrypoints,
+                    List.of(),
+                    Map.of(),
+                    Map.of(),
+                    null,
+                    List.of(),
+                    Map.of());
+        });
+    }
+
+    /**
+     * Normalizes Quilt entrypoint declarations into the simple class-name list
+     * form used by {@link AprismManifest}. Quilt allows each entrypoint key to
+     * map to a bare class name, an object ({@code {"value": "...",
+     * "adapter": "default"}}), or an array of either; all forms project to the
+     * class name. The Quilt-native {@code init} key is projected to the
+     * {@code main} key so the common lifecycle dispatch reaches it;
+     * {@code client} and {@code server} pass through unchanged.
+     *
+     * @param entrypoints the raw entrypoint map (may be {@code null})
+     * @return the normalized entrypoint map
+     */
+    private Map<String, List<String>> normalizeQuiltEntrypoints(
+            Map<String, com.google.gson.JsonElement> entrypoints) {
+        if (entrypoints == null) {
+            return Map.of();
+        }
+        Map<String, List<String>> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, com.google.gson.JsonElement> e : entrypoints.entrySet()) {
+            String key = "init".equals(e.getKey()) ? "main" : e.getKey();
+            List<String> values = new java.util.ArrayList<>();
+            collectQuiltEntrypointValues(e.getValue(), values);
+            if (!values.isEmpty()) {
+                out.put(key, values);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Recursively collects entrypoint class names from a Quilt entrypoint JSON
+     * element, which may be a primitive string, an object with a {@code value}
+     * member, or an array of either.
+     *
+     * @param element the entrypoint JSON element
+     * @param out     the accumulator for class names
+     */
+    private void collectQuiltEntrypointValues(com.google.gson.JsonElement element,
+            List<String> out) {
+        if (element == null || element.isJsonNull()) {
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (com.google.gson.JsonElement item : element.getAsJsonArray()) {
+                collectQuiltEntrypointValues(item, out);
+            }
+        } else if (element.isJsonPrimitive()) {
+            out.add(element.getAsString());
+        } else if (element.isJsonObject()) {
+            com.google.gson.JsonObject obj = element.getAsJsonObject();
+            if (obj.has("value") && obj.get("value").isJsonPrimitive()) {
+                out.add(obj.get("value").getAsString());
+            }
+        }
+    }
+
+    /**
      * Attempts to parse a NeoForge manifest ({@code META-INF/neoforge.mods.toml})
      * from a jar. Delegates to {@link NeoForgeManifestReader}, which correctly
      * handles the {@code [[mods]]}, {@code [[mixins]]}, and
@@ -112,14 +208,24 @@ public final class ManifestParser {
 
     /**
      * Attempts to parse a legacy Forge manifest ({@code META-INF/mods.toml} or
-     * {@code mcmod.info}) from a jar.
+     * {@code mcmod.info}) from a jar. The {@code mods.toml} path delegates to
+     * {@link ForgeManifestReader}, which correctly handles the
+     * {@code [[mods]]}, {@code [[mixins]]}, and {@code [[dependencies.*]]}
+     * table arrays (the simple key/value projection previously grabbed the
+     * wrong {@code modId} on multi-entry files).
      *
      * @param jarFile the jar path
      * @return the converted manifest, or empty if no Forge manifest is present
      */
     public Optional<AprismManifest> tryParseLegacyForgeManifest(Path jarFile) {
         return readJarEntry(jarFile, FORGE_MANIFEST)
-                .map(this::fromModsToml)
+                .flatMap(toml -> {
+                    try {
+                        return Optional.of(ForgeManifestReader.parse(toml));
+                    } catch (ManifestException.ManifestParseException e) {
+                        return Optional.empty();
+                    }
+                })
                 .or(() -> readJarEntry(jarFile, LEGACY_FORGE_MANIFEST).map(this::fromMcmodInfo));
     }
 
@@ -129,15 +235,38 @@ public final class ManifestParser {
      * @param jarFile the jar path
      * @return the converted manifest, or empty if no LiteLoader manifest is present
      */
+    /**
+     * Attempts to parse a LiteLoader manifest ({@code litemod.json}) from a jar.
+     *
+     * <p>LiteLoader manifests do NOT declare an entrypoint class; the mod's
+     * main class is discovered by bytecode scanning for the {@code LiteMod}
+     * interface (see {@code LiteLoaderEntrypointBridge}). The {@code mcversion}
+     * field is the target Minecraft version and is projected into
+     * {@code custom}; the {@code revision} field is surfaced in {@code custom}
+     * as well.
+     *
+     * @param jarFile the jar path
+     * @return the converted manifest, or empty if no LiteLoader manifest is present
+     */
     public Optional<AprismManifest> tryParseLiteLoaderManifest(Path jarFile) {
         return readJarEntry(jarFile, LITELOADER_MANIFEST).map(json -> {
             LiteModJson lm = GSON.fromJson(json, LiteModJson.class);
+            java.util.Map<String, Object> custom = new java.util.LinkedHashMap<>();
+            if (lm.mcversion != null) {
+                custom.put("mcversion", lm.mcversion);
+            }
+            if (lm.revision != null) {
+                custom.put("revision", lm.revision);
+            }
+            if (lm.author != null) {
+                custom.put("author", lm.author);
+            }
             return new AprismManifest(
                     1,
                     nullTo(lm.name, ""),
                     nullTo(lm.version, ""),
                     nullTo(lm.displayName, lm.name),
-                    nullTo(lm.mcversion, ""),
+                    nullTo(lm.description, ""),
                     "client",
                     Map.of(),
                     lm.mixinConfigs == null ? List.of() : lm.mixinConfigs,
@@ -145,35 +274,8 @@ public final class ManifestParser {
                     Map.of(),
                     null,
                     List.of(),
-                    Map.of());
+                    custom);
         });
-    }
-
-    /**
-     * Converts a simplified {@code mods.toml} document into an
-     * {@link AprismManifest}. Only flat key/value pairs are considered.
-     *
-     * @param toml the mods.toml contents
-     * @return the converted manifest
-     */
-    private AprismManifest fromModsToml(String toml) {
-        // TODO: replace with a full TOML parser for nested tables and arrays.
-        Map<String, String> kv = parseSimpleToml(toml);
-        String modId = nullTo(kv.get("modId"), "");
-        return new AprismManifest(
-                1,
-                modId,
-                nullTo(kv.get("version"), ""),
-                nullTo(kv.get("displayName"), modId),
-                nullTo(kv.get("description"), ""),
-                "*",
-                Map.of("main", List.of(nullTo(kv.get("entrypoint"), modId))),
-                List.of(),
-                Map.of(),
-                Map.of(),
-                null,
-                List.of(),
-                Map.of());
     }
 
     /**
@@ -204,34 +306,6 @@ public final class ManifestParser {
                 null,
                 List.of(),
                 Map.of());
-    }
-
-    /**
-     * Extracts flat {@code key="value"} pairs from a TOML document, skipping
-     * comments and table headers.
-     *
-     * @param toml the TOML contents
-     * @return a map of keys to string values
-     */
-    private Map<String, String> parseSimpleToml(String toml) {
-        Map<String, String> map = new LinkedHashMap<>();
-        for (String raw : toml.split("\\R")) {
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith("[")) {
-                continue;
-            }
-            int eq = line.indexOf('=');
-            if (eq < 0) {
-                continue;
-            }
-            String key = line.substring(0, eq).trim();
-            String value = line.substring(eq + 1).trim();
-            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                value = value.substring(1, value.length() - 1);
-            }
-            map.put(key, value);
-        }
-        return map;
     }
 
     /**
@@ -276,7 +350,27 @@ public final class ManifestParser {
         String version;
         String displayName;
         String mcversion;
+        String description;
+        String author;
+        String revision;
         List<String> mixinConfigs;
+    }
+
+    /** Minimal Gson model of {@code quilt.mod.json}. */
+    private static final class QuiltModJson {
+        Loader quilt_loader;
+
+        static final class Loader {
+            String id;
+            String version;
+            Metadata metadata;
+            Map<String, com.google.gson.JsonElement> entrypoints;
+        }
+
+        static final class Metadata {
+            String name;
+            String description;
+        }
     }
 
     /** Minimal Gson model of a single {@code mcmod.info} entry. */
