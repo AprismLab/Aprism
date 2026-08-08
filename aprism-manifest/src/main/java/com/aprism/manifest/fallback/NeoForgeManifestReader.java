@@ -18,9 +18,15 @@ import java.util.regex.Pattern;
  * Reads a NeoForge {@code neoforge.mods.toml} (or legacy {@code mods.toml})
  * and projects it into an {@link AprismManifest}.
  *
- * <p>The skeleton uses a small line-oriented TOML reader sufficient for the
- * flat key/value and {@code [[mods]]} table-array shape that NeoForge uses for
- * its primary mod descriptor. Nested tables beyond the mods array are ignored.
+ * <p>Uses a small line-oriented TOML reader sufficient for the shapes NeoForge
+ * uses: the {@code [[mods]]} table array (primary descriptor), the
+ * {@code [[mixins]]} table array (mixin config references), and the
+ * {@code [[dependencies.<modid>]]} table arrays (dependency declarations with
+ * {@code modId} + {@code versionRange}). Top-level scalar keys (such as
+ * {@code license}) are captured for projection into {@code custom}. Nested
+ * tables beyond these are ignored. Multi-line triple-quoted strings
+ * ({@code '''}) are tolerated: their continuation lines are skipped until the
+ * closing quote.
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -53,7 +59,9 @@ public final class NeoForgeManifestReader {
     }
 
     /**
-     * Parses TOML text and converts the first {@code [[mods]]} entry.
+     * Parses TOML text and converts the first {@code [[mods]]} entry,
+     * projecting {@code [[mixins]]} configs and {@code [[dependencies.*]]}
+     * entries alongside it.
      *
      * @param toml the TOML text
      * @return the synthesized Aprism manifest
@@ -61,53 +69,148 @@ public final class NeoForgeManifestReader {
      */
     public static AprismManifest parse(String toml) throws ManifestException.ManifestParseException {
         List<Map<String, String>> modTables = new ArrayList<>();
-        Map<String, String> current = null;
-        boolean inModsArray = false;
+        List<String> mixinConfigs = new ArrayList<>();
+        Map<String, String> depends = new LinkedHashMap<>();
+        Map<String, String> topLevel = new LinkedHashMap<>();
+
+        Map<String, String> currentMod = null;
+        Map<String, String> currentDep = null;
+        Section section = Section.NONE;
+        boolean inMultilineString = false;
 
         for (String raw : toml.split("\\R")) {
-            String line = stripComment(raw).trim();
+            String line = raw.trim();
             if (line.isEmpty()) {
                 continue;
             }
-            if (line.equals("[[mods]]")) {
-                current = new LinkedHashMap<>();
-                modTables.add(current);
-                inModsArray = true;
+
+            // Multi-line triple-quoted string handling. While inside one,
+            // consume lines until a line containing the closing ''' appears.
+            if (inMultilineString) {
+                if (line.contains("'''")) {
+                    inMultilineString = false;
+                }
                 continue;
             }
-            if (line.startsWith("[[")) {
-                inModsArray = false;
+
+            // A standalone ''' line outside a multi-line string is the
+            // CLOSING quote of an already-consumed value (e.g. description).
+            // It must not be treated as an opening quote.
+            if (line.equals("'''") || line.equals("'''")) {
                 continue;
             }
-            if (line.startsWith("[") && line.endsWith("]")) {
-                inModsArray = false;
+
+            String stripped = stripComment(line).trim();
+            if (stripped.isEmpty()) {
                 continue;
             }
-            if (!inModsArray || current == null) {
+
+            if (stripped.equals("[[mods]]")) {
+                flushDependency(depends, currentDep);
+                currentDep = null;
+                currentMod = new LinkedHashMap<>();
+                modTables.add(currentMod);
+                section = Section.MODS;
                 continue;
             }
-            Matcher kv = KV.matcher(line);
-            if (kv.matches()) {
-                current.put(kv.group(1), unquote(kv.group(2)));
+            if (stripped.startsWith("[[dependencies")) {
+                flushDependency(depends, currentDep);
+                currentDep = new LinkedHashMap<>();
+                section = Section.DEPENDENCIES;
+                continue;
+            }
+            if (stripped.equals("[[mixins]]")) {
+                flushDependency(depends, currentDep);
+                currentDep = null;
+                section = Section.MIXINS;
+                continue;
+            }
+            if (stripped.startsWith("[[")) {
+                flushDependency(depends, currentDep);
+                currentDep = null;
+                section = Section.NONE;
+                continue;
+            }
+            if (stripped.startsWith("[") && stripped.endsWith("]")) {
+                flushDependency(depends, currentDep);
+                currentDep = null;
+                section = Section.NONE;
+                continue;
+            }
+
+            Matcher kv = KV.matcher(stripped);
+            if (!kv.matches()) {
+                continue;
+            }
+            String key = kv.group(1);
+            String rawValue = kv.group(2);
+
+            // Detect a triple-quoted string VALUE that opens here. If it does
+            // not close on the same line, enter multi-line consumption.
+            if (rawValue.trim().startsWith("'''")) {
+                String body = rawValue.trim().substring(3);
+                if (!body.contains("'''")) {
+                    inMultilineString = true;
+                }
+                continue;
+            }
+
+            String value = unquote(rawValue);
+            switch (section) {
+                case MODS -> {
+                    if (currentMod != null) {
+                        currentMod.put(key, value);
+                    }
+                }
+                case MIXINS -> {
+                    if ("config".equals(key)) {
+                        mixinConfigs.add(value);
+                    }
+                }
+                case DEPENDENCIES -> {
+                    if (currentDep != null) {
+                        currentDep.put(key, value);
+                    }
+                }
+                default -> topLevel.put(key, value);
             }
         }
+        // Flush a trailing dependency entry (file may end inside the table)
+        flushDependency(depends, currentDep);
 
         if (modTables.isEmpty()) {
             throw new ManifestException.ManifestParseException(
                     "CHKAPRISM-MANIFEST-001: neoforge.mods.toml has no [[mods]] entry");
         }
-        return convert(modTables.get(0));
+        return convert(modTables.get(0), mixinConfigs, depends, topLevel);
     }
 
-    private static AprismManifest convert(Map<String, String> mods)
+    private enum Section { NONE, MODS, MIXINS, DEPENDENCIES }
+
+    private static void flushDependency(Map<String, String> depends, Map<String, String> dep) {
+        if (dep == null) {
+            return;
+        }
+        String depId = dep.get("modId");
+        String range = dep.getOrDefault("versionRange", "*");
+        if (depId != null && !depId.isBlank()) {
+            depends.putIfAbsent(depId, range);
+        }
+    }
+
+    private static AprismManifest convert(Map<String, String> mods,
+            List<String> mixinConfigs, Map<String, String> depends,
+            Map<String, String> topLevel)
             throws ManifestException.ManifestParseException {
         String modId = mods.get("modId");
         String version = mods.getOrDefault("version", "");
         String displayName = mods.get("displayName");
         String description = mods.get("description");
         String environment = "*";
-        Map<String, Object> custom = mods.containsKey("license")
-                ? Map.of("license", mods.get("license"))
+        // license is a top-level key in neoforge.mods.toml
+        String license = topLevel.get("license");
+        Map<String, Object> custom = license != null
+                ? Map.of("license", license)
                 : Map.of();
 
         if (modId == null || modId.isBlank()) {
@@ -124,7 +227,7 @@ public final class NeoForgeManifestReader {
                 displayName != null ? displayName : modId,
                 description != null ? description : "",
                 environment,
-                Map.of(), List.of(), Map.of(), Map.of(),
+                Map.of(), List.copyOf(mixinConfigs), Map.copyOf(depends), Map.of(),
                 null, List.of(), custom);
     }
 

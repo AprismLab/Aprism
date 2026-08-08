@@ -45,6 +45,16 @@ public final class ModDiscoverer {
      */
     public static final String FABRIC_LOADER_VERSION = "0.16.14";
 
+    /** NeoForge loader key (registered by NeoForge-Support.aep). */
+    public static final String NEOFORGE_KEY = "N";
+
+    /**
+     * The NeoForge version that Aprism NeoForge-Support emulates. NeoForge
+     * mods may declare {@code depends.neoforge} ranges against this value;
+     * it mirrors the {@code neoforge} entry in gradle/libs.versions.toml.
+     */
+    public static final String NEOFORGE_LOADER_VERSION = "21.4.0-beta";
+
     /** The archive format of a discovered mod. */
     public enum ModFormat { AJE, JAR, LITEMOD }
 

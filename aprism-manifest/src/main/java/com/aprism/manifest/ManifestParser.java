@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.aprism.manifest.fallback.NeoForgeManifestReader;
 import com.google.gson.Gson;
 
 /**
@@ -92,13 +93,21 @@ public final class ManifestParser {
 
     /**
      * Attempts to parse a NeoForge manifest ({@code META-INF/neoforge.mods.toml})
-     * from a jar.
+     * from a jar. Delegates to {@link NeoForgeManifestReader}, which correctly
+     * handles the {@code [[mods]]}, {@code [[mixins]]}, and
+     * {@code [[dependencies.*]]} table arrays.
      *
      * @param jarFile the jar path
      * @return the converted manifest, or empty if no NeoForge manifest is present
      */
     public Optional<AprismManifest> tryParseNeoForgeManifest(Path jarFile) {
-        return readJarEntry(jarFile, NEOFORGE_MANIFEST).map(this::fromModsToml);
+        return readJarEntry(jarFile, NEOFORGE_MANIFEST).flatMap(toml -> {
+            try {
+                return Optional.of(NeoForgeManifestReader.parse(toml));
+            } catch (ManifestException.ManifestParseException e) {
+                return Optional.empty();
+            }
+        });
     }
 
     /**

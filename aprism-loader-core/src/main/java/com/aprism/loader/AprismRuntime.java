@@ -31,6 +31,8 @@ import com.aprism.loader.remap.Remapper;
 import com.aprism.loader.remap.TinyMappings;
 import com.aprism.loader.remap.TinyRemapper;
 import com.aprism.loader.bridge.FabricEntrypointBridge;
+import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
+import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.DependencyResolutionException;
@@ -441,6 +443,7 @@ public final class AprismRuntime {
         Map<String, String> environment = new HashMap<>();
         environment.put("minecraft", mcVersion != null ? mcVersion : "");
         environment.put("fabricloader", ModDiscoverer.FABRIC_LOADER_VERSION);
+        environment.put("neoforge", ModDiscoverer.NEOFORGE_LOADER_VERSION);
         environment.put("java", Integer.toString(Runtime.version().feature()));
         DependencyResolver resolver = new DependencyResolver();
         List<ModContainer> ordered = resolver.resolve(
@@ -704,6 +707,10 @@ public final class AprismRuntime {
      * @param phase         the lifecycle phase
      */
     private void invokeModEntrypoint(LoadedModContainer container, String entrypointKey, AprismPhase phase) {
+        if (ModDiscoverer.NEOFORGE_KEY.equals(container.getLoaderKey())) {
+            invokeNeoForgeEntrypoint(container, phase);
+            return;
+        }
         AprismManifest manifest = container.getManifest();
         List<String> entrypoints = manifest.entrypoints() == null
                 ? List.of()
@@ -741,6 +748,44 @@ public final class AprismRuntime {
         }
     }
 
+    /**
+     * NeoForge entrypoint dispatch. Unlike Fabric, NeoForge entrypoints are NOT
+     * declared in the manifest; they are classes annotated with
+     * {@code net.neoforged.fml.common.Mod}, discovered by scanning the mod jar
+     * bytecode. NeoForge initialization is construction itself: the {@code @Mod}
+     * class is instantiated with an injected mod-scoped {@code IEventBus}. After
+     * construction the mod is event-driven, so only the INIT phase constructs;
+     * all other phases are no-ops for NeoForge mods.
+     *
+     * @param container the NeoForge mod container
+     * @param phase     the lifecycle phase
+     */
+    private void invokeNeoForgeEntrypoint(LoadedModContainer container, AprismPhase phase) {
+        if (phase != AprismPhase.INIT) {
+            return;
+        }
+        if (container.getInstance() != null) {
+            return;
+        }
+        List<String> modClasses = NeoForgeEntrypointBridge.findModClasses(
+                container.getSourcePath(), container.getId());
+        if (modClasses.isEmpty()) {
+            LOG.warning("NeoForge mod " + container.getId()
+                    + " has no @Mod entrypoint class; skipping");
+            return;
+        }
+        try {
+            Class<?> clazz = classLoader.loadClass(modClasses.get(0));
+            Object instance = NeoForgeEntrypointBridge.construct(clazz, new NeoForgeEventBus());
+            container.setInstance(instance);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load NeoForge entrypoint for "
+                    + container.getId(), e);
+        } catch (RuntimeException e) {
+            LOG.warning("NeoForge mod " + container.getId()
+                    + " failed to construct during INIT: " + e);
+        }
+    }
     /**
      * Maps a lifecycle phase to the entrypoint key that should be invoked.
      *
