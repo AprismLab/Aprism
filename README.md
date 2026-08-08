@@ -1,7 +1,7 @@
 # Aprism
 
 > A cross-platform, cross-edition, cross-version Minecraft mod loader and injector compatible with JE/BE.
-> Author: BlockConnect@StarsailsClover | Version: v26.0-Alpha.5 (Phase0 internal)
+> Author: BlockConnect@StarsailsClover | Version: v26.0-Alpha.6 (Phase0 internal)
 
 Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks, brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases).
 
@@ -60,7 +60,7 @@ Format: `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]` (Phase is internal-only
 - Minor official: bare version number, e.g. `v26.2`, shipped as a GitHub Release. Alpha.9 is the release candidate; "Alpha 10" is never used.
 - Annual edition: `v26.2026` (final improvement pass over `v26.9`), each December, GitHub Release.
 - Internal dev tag: `v26.0-Alpha.1-Phase0` ... (Phase tracked only in FACT.md)
-- Example artifact: `Aprism-v26.0-Alpha.5-JE-26.2.jar`
+- Example artifact: `Aprism-v26.0-Alpha.6-JE-26.2.jar`
 - Beta is not planned.
 - Interface contract: monotonic increment only; deprecation allowed with notice.
 
@@ -69,7 +69,7 @@ Format: `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]` (Phase is internal-only
 Download `Aprism-<version>-JE-<MCVer>.jar` from [GitHub Releases](https://github.com/NDBlockConnect/Aprism/releases) and attach it as a javaagent:
 
 ```bash
-java -javaagent:Aprism-v26.0-Alpha.5-JE-26.2.jar=aprismVersion=v26.0-Alpha.5;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
+java -javaagent:Aprism-v26.0-Alpha.6-JE-26.2.jar=aprismVersion=v26.0-Alpha.6;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
 ```
 
 Place `.aje` mods in `<game-dir>/mods/` (see [08-developer-guide.md](docs/en/08-developer-guide.md) for the mod format). Every release is SHA-256 checksummed and cosign keyless-signed; verify with `cosign verify-blob`.
