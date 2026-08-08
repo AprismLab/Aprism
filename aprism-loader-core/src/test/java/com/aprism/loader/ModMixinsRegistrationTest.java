@@ -48,10 +48,14 @@ class ModMixinsRegistrationTest {
         assertThat(AprismRuntime.instance().getMods())
                 .as("the mixin-proof mod should be loaded")
                 .hasSize(1);
+        // Mixin's config set is a JVM-global singleton; other tests in the same
+        // JVM may have registered their own configs, so assert this config is
+        // PRESENT rather than that the set holds exactly one entry.
         assertThat(Mixins.getConfigs())
                 .as("the mixin config from the extracted .aje must register "
                         + "(was: restrictions NPE / isClassLoaded Class.forName bugs)")
-                .hasSize(1);
+                .extracting(config -> config.getName())
+                .contains(CONFIG);
     }
 
 

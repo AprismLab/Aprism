@@ -176,8 +176,12 @@ public final class AprismMixinBootstrap {
             return classBytes;
         }
         try {
-            String internalName = className.replace('.', '/');
-            return transformer.transformClassBytes(className, internalName, classBytes);
+            // IMixinTransformer.transformClassBytes(name, transformedName, bytes) feeds
+            // its SECOND argument into transformClass. Mixin indexes configs and
+            // mixins by DOTTED class names, so transformedName must be dotted;
+            // passing a slashed (internal) name makes hasMixinsFor fail and no
+            // mixin is ever applied (the real-game weave bug).
+            return transformer.transformClassBytes(className, className, classBytes);
         } catch (Throwable t) {
             LOG.warning("Mixin transformation failed for " + className + ": " + t.getMessage());
             return classBytes;

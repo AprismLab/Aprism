@@ -69,6 +69,24 @@ public final class AprismMixinService extends MixinServiceAbstract {
         return AprismMixinBootstrap.getClassLoader() != null;
     }
 
+    /**
+     * The Mixin phase the environment starts in. The base
+     * {@link MixinServiceAbstract} returns PREINIT, but mixin configs
+     * registered via Mixins.addConfiguration are bound to the DEFAULT
+     * environment. If the service starts in PREINIT, the transformer's
+     * selectConfigs pass runs against the PREINIT environment and never
+     * prepares the DEFAULT-bound configs, so no mixin is ever applied.
+     * Starting in DEFAULT makes the transformer's environment match the
+     * config's environment, enabling preparation and application.
+     * Pinned by MixinWeaveBehaviorTest.
+     *
+     * @return the initial Mixin phase (DEFAULT, the applying phase)
+     */
+    @Override
+    public MixinEnvironment.Phase getInitialPhase() {
+        return MixinEnvironment.Phase.DEFAULT;
+    }
+
     @Override
     public IClassProvider getClassProvider() {
         return classProvider;
