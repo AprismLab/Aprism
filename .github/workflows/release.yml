@@ -74,16 +74,21 @@ jobs:
           gh release delete "${{ github.ref_name }}" --yes 2>$null
           exit 0
 
-      - name: Create Pre-Release
+      - name: Create Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ver = "${{ github.ref_name }}"
+          # Bare version (no -Alpha suffix) = minor official = full Release.
+          # Anything with -Alpha = Pre-Release.
+          $isOfficial = -not ($ver -match "-Alpha")
+          if ($isOfficial) { $kind = "Release"; $preFlag = "" }
+          else             { $kind = "Pre-Release"; $preFlag = "--prerelease" }
           $notes = @"
-          Aprism Loader $ver (Pre-Release)
+          Aprism Loader $ver ($kind)
 
-          Alpha build of the 2026 major line. Targets Minecraft Java Edition 26.2.
+          Build of the 2026 major line. Targets Minecraft Java Edition 26.2.
 
           **Contents**
           - ``Aprism-$ver-JE-26.2.jar``: the self-contained javaagent (fat jar, dependencies relocated)
@@ -97,4 +102,4 @@ jobs:
 
           Place ``.aje`` mods in ``<game-dir>/mods/``. See docs/zh/08-开发者指南.md.
           "@
-          gh release create $ver dist/* --prerelease --title $ver --notes $notes
+          gh release create $ver dist/* $preFlag --title $ver --notes $notes
