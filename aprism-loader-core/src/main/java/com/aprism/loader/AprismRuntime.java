@@ -134,6 +134,17 @@ public final class AprismRuntime {
      */
     public void initialize(Instrumentation inst, AprismClassTransformer externalTransformer,
             String aprismVersion, String mcEdit, String mcVersion) {
+        // Idempotent re-init guard: once initialized (classLoader present), a
+        // repeated initialize() is a no-op. This protects production boot where
+        // the agent may be entered more than once (premain + agentmain, or a
+        // re-triggered load) from double-registering the class transformer and
+        // re-loading mods. shutdown() nulls classLoader, so a subsequent
+        // initialize() after shutdown() proceeds normally (test setUp/tearDown
+        // pairs rely on this).
+        if (classLoader != null) {
+            LOG.info("AprismRuntime already initialized; ignoring duplicate initialize()");
+            return;
+        }
         this.instrumentation = inst;
         this.aprismVersion = aprismVersion;
         this.mcEdit = mcEdit;

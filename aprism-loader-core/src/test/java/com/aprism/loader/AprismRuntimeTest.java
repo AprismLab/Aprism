@@ -321,6 +321,29 @@ class AprismRuntimeTest {
     }
 
     @Nested
+    class InitializationIdempotency {
+        @Test
+        void duplicateInitializeIsIgnoredAfterModsLoaded() throws Exception {
+            // Load a mod first so the runtime has populated state.
+            writeAje(gameRoot.resolve("mods").resolve("alpha.aje"), "alpha", "1.0.0",
+                    RECORDING_MOD_CLASS, null);
+            AprismRuntime.instance().performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+            assertThat(AprismRuntime.instance().getMods()).hasSize(1);
+
+            // A duplicate initialize() (e.g. premain + agentmain, or a
+            // re-triggered load) must NOT reset the runtime: the loaded mod and
+            // the classloader reference survive, so mods are not dropped or
+            // double-loaded.
+            AprismRuntime.instance().initialize(null, "26.0.0", "JE", "1.21.4");
+
+            assertThat(AprismRuntime.instance().getMods())
+                    .as("duplicate initialize() must not clear loaded mods")
+                    .hasSize(1);
+            assertThat(AprismRuntime.instance().getMods().get(0).getId()).isEqualTo("alpha");
+        }
+    }
+
+    @Nested
     class ExtensionLifecycle {
         @Test
         void extensionWithEntrypointInvokedOnInitialize() throws Exception {
