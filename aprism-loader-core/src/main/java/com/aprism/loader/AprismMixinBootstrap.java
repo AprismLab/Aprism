@@ -163,7 +163,10 @@ public final class AprismMixinBootstrap {
             offeredConfigs.add(configName);
             LOG.info("Registered Mixin config: " + configName);
         } catch (Throwable t) {
-            LOG.warning("Failed to register Mixin config " + configName + ": " + t.getMessage());
+            // Log the full cause chain so config registration failures are
+            // transparent (a bare message hides the real root cause).
+            LOG.log(java.util.logging.Level.WARNING,
+                    "Failed to register Mixin config " + configName, t);
         }
     }
 
