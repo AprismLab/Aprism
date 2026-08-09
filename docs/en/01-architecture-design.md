@@ -413,3 +413,14 @@ The Aprism sandbox is capability-based: a mod's manifest declares the capabiliti
 - Project Leyden: OpenJDK ahead-of-time class linking and method profiling effort.
 - Eclipse Temurin: OpenJDK LTS distribution used as the Aprism bundled JDK base.
 - Gradle `libs.versions.toml`: central version catalog.
+
+## Version Line (v26.1-Alpha.7)
+
+Aprism supports the JE version line **1.20 .. 26.2** via
+. Each version resolves to a
+ describing its obfuscation profile (REMAPPED pre-26.1,
+NO_REMAP 26.1+), Java baseline (17 / 21 / 25), and mappings source
+(Intermediary / none). Versions below 1.20 are outside the supported line;
+versions above 26.2 follow the unobfuscated line but are reported as beyond
+the explicit window.
+

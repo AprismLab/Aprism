@@ -31,6 +31,8 @@ import com.aprism.loader.remap.McProfile;
 import com.aprism.loader.remap.Remapper;
 import com.aprism.loader.remap.TinyMappings;
 import com.aprism.loader.remap.TinyRemapper;
+import com.aprism.loader.remap.VersionLineEntry;
+import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.bridge.FabricEntrypointBridge;
 import com.aprism.loader.bridge.ForgeEntrypointBridge;
@@ -96,6 +98,8 @@ public final class AprismRuntime {
     private final List<ExtensionLoader.LoadedExtension> loadedExtensions = new ArrayList<>();
 
     private McProfile mcProfile;
+    /** Resolved version-line characteristics for the running Minecraft version. */
+    private VersionLineEntry versionLineEntry;
     private BytecodeRemapper bytecodeRemapper;
     private Path gameRoot;
 
@@ -177,6 +181,22 @@ public final class AprismRuntime {
         // {@link #loadIntermediaryMappings} once the intermediary mappings are
         // located.
         this.mcProfile = McProfile.of(mcVersion);
+        // v26.1-Alpha.7 version-line foundation (goal #1): resolve the running
+        // Minecraft version against the supported JE line (1.20 .. 26.2) and
+        // record its characteristics (profile, Java baseline, mappings source).
+        this.versionLineEntry = VersionLineRegistry.resolve(mcVersion).orElse(null);
+        if (versionLineEntry == null) {
+            LOG.warning("Minecraft " + mcVersion + " is below the supported JE line ("
+                    + VersionLineRegistry.describeLine() + "); loading may fail");
+        } else if (!VersionLineRegistry.isWithinSupportedLine(mcVersion)) {
+            LOG.info("Minecraft " + mcVersion + " is beyond the explicit JE line window ("
+                    + VersionLineRegistry.describeLine() + "); using " + mcProfile);
+        } else {
+            LOG.info("Minecraft " + mcVersion + " resolved on JE line "
+                    + VersionLineRegistry.describeLine() + " (profile=" + mcProfile
+                    + ", java>=" + versionLineEntry.javaBaseline()
+                    + ", mappings=" + versionLineEntry.mappingsSource() + ")");
+        }
         this.bytecodeRemapper = null;
         this.classLoader.setBytecodeRemapper(null);
 
@@ -222,6 +242,17 @@ public final class AprismRuntime {
      */
     public McProfile getMcProfile() {
         return mcProfile;
+    }
+
+    /**
+     * Returns the resolved version-line characteristics for the running
+     * Minecraft version, or {@code null} when the version is below the
+     * supported JE line.
+     *
+     * @return the version-line entry, or {@code null}
+     */
+    public VersionLineEntry getVersionLineEntry() {
+        return versionLineEntry;
     }
 
     /**
@@ -1192,6 +1223,7 @@ public final class AprismRuntime {
         extensionLoader = null;
         instrumentation = null;
         mcProfile = null;
+        versionLineEntry = null;
         bytecodeRemapper = null;
         gameRoot = null;
         mods.clear();
