@@ -38,6 +38,8 @@ import com.aprism.loader.bridge.ForgeEventBus;
 import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEventBus;
+import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
 import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
 import com.aprism.manifest.DependencyResolutionException;
@@ -278,6 +280,7 @@ public final class AprismRuntime {
         ensureInitialized();
         loadedExtensions.clear();
         extensionContainers.clear();
+        LoaderEntrypointRegistry.clear();
         if (loadReport != null) {
             loadReport.beginPhase1();
         }
@@ -759,6 +762,18 @@ public final class AprismRuntime {
      * @param phase         the lifecycle phase
      */
     private void invokeModEntrypoint(LoadedModContainer container, String entrypointKey, AprismPhase phase) {
+        // SPI seam: a registered LoaderEntrypointHandler (supplied by a
+        // loader-support .aep, e.g. from AprismRefract) takes ownership of
+        // dispatch for its loader key. This is the extraction point that lets
+        // foreign-loader bridges live outside aprism-loader-core.
+        LoaderEntrypointHandler handler =
+                LoaderEntrypointRegistry.get(container.getLoaderKey());
+        if (handler != null) {
+            handler.invoke(container, phase);
+            if (handler.isExclusive()) {
+                return;
+            }
+        }
         if (ModDiscoverer.NEOFORGE_KEY.equals(container.getLoaderKey())) {
             invokeNeoForgeEntrypoint(container, phase);
             return;

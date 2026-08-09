@@ -38,4 +38,24 @@ public interface ExtensionContext {
      * @param modFolder  the mod folder name (e.g. "fabric-mods")
      */
     void registerLoaderSupport(String loaderKey, String modFolder);
+
+    /**
+     * Registers an entrypoint-dispatch handler for a foreign loader. Called by
+     * loader-support extensions to supply the bridge that invokes that loader's
+     * entrypoint convention. This is the extraction seam that lets loader
+     * support live in the AprismRefract sub-project rather than in the Aprism
+     * core: the core only ships the {@code LoaderEntrypointHandler} contract
+     * and a registry, and delegates dispatch to whatever handler an extension
+     * registers for a loader key.
+     *
+     * <p>The handler is typed as {@code Object} here because the API module
+     * must not depend on the loader-core {@code LoaderEntrypointHandler}
+     * interface (that would create a circular dependency). The loader-core
+     * {@code ExtensionContextImpl} casts it to the handler interface at
+     * registration time.
+     *
+     * @param loaderKey the loader key this handler serves (Fa, Fo, N, L, Q)
+     * @param handler   the handler to register; must not be {@code null}
+     */
+    void registerEntrypointHandler(String loaderKey, Object handler);
 }

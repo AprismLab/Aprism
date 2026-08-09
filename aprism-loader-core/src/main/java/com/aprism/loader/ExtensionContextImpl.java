@@ -7,6 +7,8 @@ import com.aprism.api.AprismEventBus;
 import com.aprism.api.AprismRegistry;
 import com.aprism.api.ExtensionContainer;
 import com.aprism.api.ExtensionContext;
+import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
 
 /**
  * Extension-scoped {@link ExtensionContext} implementation. Each loaded
@@ -68,5 +70,26 @@ public final class ExtensionContextImpl implements ExtensionContext {
             throw new IllegalArgumentException("modFolder must not be blank");
         }
         loaderSupportRegistrar.accept(loaderKey, modFolder);
+    }
+
+    @Override
+    public void registerEntrypointHandler(String loaderKey, Object handler) {
+        if (loaderKey == null || loaderKey.isBlank()) {
+            throw new IllegalArgumentException("loaderKey must not be blank");
+        }
+        if (handler == null) {
+            throw new IllegalArgumentException("handler must not be null");
+        }
+        if (!(handler instanceof LoaderEntrypointHandler typed)) {
+            throw new IllegalArgumentException(
+                    "handler must implement LoaderEntrypointHandler, got "
+                            + handler.getClass().getName());
+        }
+        if (!loaderKey.equals(typed.loaderKey())) {
+            throw new IllegalArgumentException(
+                    "handler.loaderKey() (" + typed.loaderKey()
+                            + ") does not match registration key (" + loaderKey + ")");
+        }
+        LoaderEntrypointRegistry.register(typed);
     }
 }
