@@ -31,6 +31,7 @@ import com.aprism.loader.remap.McProfile;
 import com.aprism.loader.remap.Remapper;
 import com.aprism.loader.remap.TinyMappings;
 import com.aprism.loader.remap.TinyRemapper;
+import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.bridge.FabricEntrypointBridge;
 import com.aprism.loader.bridge.ForgeEntrypointBridge;
 import com.aprism.loader.bridge.ForgeEventBus;
@@ -692,6 +693,29 @@ public final class AprismRuntime {
             bedrockMods.put(container.getId(), container);
         }
         LOG.info("Loaded " + bedrockMods.size() + " BE mod(s) from aprism_mods/");
+        coordinateBedrockInjection(gameRoot);
+    }
+
+    /**
+     * Runs the fail-closed Bedrock injection coordination (FACT.md 9.8) against
+     * the mods discovered by {@link #loadBedrockMods}. The result is logged: a
+     * feasible plan means native injection may proceed (the platform injector
+     * consumes {@link BedrockInjectionCoordinator.CoordinationResult#plan()});
+     * any refusal is reported and injection is withheld. This is the pure-Java
+     * planning step only; actual process attachment is the native injector's job.
+     *
+     * @param gameRoot the BE game root (typically {@code com.mojang/})
+     */
+    private void coordinateBedrockInjection(Path gameRoot) {
+        BedrockInjectionCoordinator coordinator = new BedrockInjectionCoordinator();
+        BedrockInjectionCoordinator.CoordinationResult result =
+                coordinator.coordinateForGameRoot(gameRoot, mcVersion, List.copyOf(bedrockMods.values()));
+        if (result.isFeasible()) {
+            LOG.info("BE injection plan ready: " + result.plan().actions().size()
+                    + " native action(s) for BE " + result.plan().beVersion());
+        } else {
+            LOG.warning("BE injection withheld (fail-closed): " + result.refusalReason());
+        }
     }
 
     /**
