@@ -106,18 +106,41 @@ public final class BedrockInjectionCoordinator {
                     "signature database unavailable: " + e.getMessage());
         }
 
+        // Fail-closed: the version must adapt (parse, in 26.x scope, and be in the DB).
+        BedrockVersionAdapter adapter = new BedrockVersionAdapter();
+        BedrockVersionAdapter.AdapterResult adapted = adapter.adapt(beVersion, db);
+        if (!adapted.isResolved()) {
+            return new CoordinationResult(true, false, null, adapterRefusalText(adapted, beVersion));
+        }
+
         // Fail-closed: the platform must be detectable.
         if (platform == null) {
             return new CoordinationResult(true, false, null,
                     "unable to detect the current Bedrock platform");
         }
 
+        // Plan against the adapter-normalized version key.
         BedrockInjectionPlan planner = new BedrockInjectionPlan(db);
-        BedrockInjectionPlan.Plan plan = planner.plan(beVersion, platform, mods);
+        BedrockInjectionPlan.Plan plan = planner.plan(adapted.normalizedVersion(), platform, mods);
         if (!plan.isFeasible()) {
-            return new CoordinationResult(true, false, plan, refusalText(plan, platform, beVersion));
+            return new CoordinationResult(true, false, plan,
+                    refusalText(plan, platform, adapted.normalizedVersion()));
         }
         return new CoordinationResult(true, true, plan, null);
+    }
+
+    /**
+     * Builds a human-readable refusal message from a refused adapter result.
+     */
+    private static String adapterRefusalText(BedrockVersionAdapter.AdapterResult adapted, String raw) {
+        return switch (adapted.refusal()) {
+            case UNPARSEABLE -> "running BE version '" + raw + "' is not parseable";
+            case OUT_OF_SCOPE -> "running BE version '" + adapted.normalizedVersion()
+                    + "' is outside the supported scope (Bedrock "
+                    + BedrockVersionAdapter.MIN_MAJOR_VERSION + ".x and later only)";
+            case NOT_IN_DATABASE -> "running BE version '" + adapted.normalizedVersion()
+                    + "' is not present in the signature database";
+        };
     }
 
     /**
