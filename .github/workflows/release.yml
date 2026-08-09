@@ -92,23 +92,23 @@ jobs:
           if (Test-Path $notesFile) {
             $notes = Get-Content $notesFile -Raw
           } else {
-            $notes = @"
-            Aprism Loader $ver ($kind)
+          $notes = @"
+          Aprism Loader $ver ($kind)
 
-            Build of the 2026 major line. Targets Minecraft Java Edition 26.2.
+          Build of the 2026 major line. Targets Minecraft Java Edition 26.2.
 
-            **Contents**
-            - ``Aprism-$ver-JE-26.2.jar``: the self-contained javaagent (fat jar, dependencies relocated)
-            - ``checksums.txt``: SHA-256 of the artifact
-            - ``.sig`` / ``.bundle``: cosign keyless signatures (verify with ``cosign verify-blob``)
+          **Contents**
+          - ``Aprism-$ver-JE-26.2.jar``: the self-contained javaagent (fat jar, dependencies relocated)
+          - ``checksums.txt``: SHA-256 of the artifact
+          - ``.sig`` / ``.bundle``: cosign keyless signatures (verify with ``cosign verify-blob``)
 
-            **Quick start**
-            ``````
-            java -javaagent:Aprism-$ver-JE-26.2.jar=aprismVersion=$ver;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
-            ``````
+          **Quick start**
+          ``````
+          java -javaagent:Aprism-$ver-JE-26.2.jar=aprismVersion=$ver;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
+          ``````
 
-            Place ``.aje`` mods in ``<game-dir>/mods/``. See docs/zh/08-开发者指南.md.
-            "@
+          Place ``.aje`` mods in ``<game-dir>/mods/``. See docs/zh/08-开发者指南.md.
+          "@
           }
           if ($isOfficial) {
             gh release create $ver dist/* --title $ver --notes $notes
