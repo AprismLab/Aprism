@@ -41,6 +41,9 @@ import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.modmenu.ModListEntry;
+import com.aprism.loader.modmenu.ModListRegistry;
+import com.aprism.loader.modmenu.ModListState;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -99,6 +102,8 @@ public final class AprismRuntime {
     private ClassRedefiner classRedefiner;
     /** Structured logging facility (v26.2-Alpha.1, goal #6). */
     private AprismLogging logging;
+    /** Native mod list registry (v26.2-Alpha.2, goal #7). */
+    private final ModListRegistry modListRegistry = new ModListRegistry();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -307,6 +312,70 @@ public final class AprismRuntime {
         } catch (IOException e) {
             LOG.warning("Could not open aprism-logs/aprism.log: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns the native mod list registry (v26.2-Alpha.2, goal #7). The
+     * registry is rebuilt at the end of every {@link #performLoad} pass from
+     * the loaded mod and extension containers plus the load report failures.
+     *
+     * @return the mod list registry
+     */
+    public ModListRegistry getModList() {
+        return modListRegistry;
+    }
+
+    /**
+     * Rebuilds the mod list registry from the current runtime state
+     * (v26.2-Alpha.2, goal #7). Every loaded extension and mod contributes a
+     * LOADED entry; every failed unit recorded in the load report contributes
+     * a FAILED entry (unless already present as loaded).
+     */
+    private void rebuildModList() {
+        Map<String, ModListEntry> entries = new LinkedHashMap<>();
+        for (LoadedExtensionContainer ext : extensionContainers.values()) {
+            var manifest = ext.getManifest();
+            entries.put(ext.getExtensionId(), new ModListEntry(
+                    ext.getExtensionId(),
+                    manifest.loaderRange() == null ? "" : manifest.loaderRange(),
+                    ext.getExtensionId(),
+                    manifest.type() == null ? "" : manifest.type(),
+                    "extension",
+                    manifest.loaderKey() == null ? "aprism" : manifest.loaderKey(),
+                    ext.getSourcePath() == null ? "" : ext.getSourcePath().getFileName().toString(),
+                    manifest.depends() == null ? Map.of() : manifest.depends(),
+                    ModListState.LOADED));
+        }
+        for (LoadedModContainer mod : mods.values()) {
+            var manifest = mod.getManifest();
+            entries.put(mod.getId(), new ModListEntry(
+                    mod.getId(),
+                    mod.getVersion(),
+                    mod.getDisplayName(),
+                    mod.getDescription() == null ? "" : mod.getDescription(),
+                    "mod",
+                    mod.getLoaderKey(),
+                    mod.getSourcePath() == null ? "" : mod.getSourcePath().getFileName().toString(),
+                    manifest.depends() == null ? Map.of() : manifest.depends(),
+                    ModListState.LOADED));
+        }
+        if (loadReport != null) {
+            for (LoadReport.Entry entry : loadReport.failures()) {
+                if (!entries.containsKey(entry.id())) {
+                    entries.put(entry.id(), new ModListEntry(
+                            entry.id(),
+                            entry.version() == null ? "" : entry.version(),
+                            entry.id(),
+                            entry.failure() == null ? "" : entry.failure(),
+                            entry.kind(),
+                            "unknown",
+                            "",
+                            Map.of(),
+                            ModListState.FAILED));
+                }
+            }
+        }
+        modListRegistry.rebuild(entries);
     }
 
     /**
@@ -756,6 +825,12 @@ public final class AprismRuntime {
      */
     public void performLoad(Path gameRoot, Path extensionsDir) throws DependencyResolutionException {
         this.gameRoot = gameRoot;
+        // v26.2-Alpha.2 (goal #7): ensure a load report exists so failed
+        // units are recorded even when callers invoke performLoad directly
+        // (bootstrapProduction also creates one; keep the earlier instance).
+        if (loadReport == null) {
+            loadReport = new LoadReport();
+        }
         attachLogFileSink(gameRoot);
         loadExtensions(extensionsDir);
         if ("BE".equalsIgnoreCase(mcEdit)) {
@@ -763,6 +838,10 @@ public final class AprismRuntime {
         } else {
             loadMods(gameRoot);
         }
+        // v26.2-Alpha.2 native mod list (goal #7): rebuild the queryable
+        // registry from the loaded containers plus the load report, so the
+        // future in-game mod menu sees every unit with its final state.
+        rebuildModList();
     }
 
     /**
@@ -1398,6 +1477,7 @@ public final class AprismRuntime {
         bedrockMods.clear();
         loadedExtensions.clear();
         extensionContainers.clear();
+        modListRegistry.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();

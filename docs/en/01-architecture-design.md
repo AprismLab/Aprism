@@ -495,3 +495,23 @@ Runtime wiring: the facility is created in `initialize()` (console sink),
 the file sink is attached in `performLoad()`, and `shutdown()` flushes and
 closes the facility. Accessors: `AprismRuntime.getLogging()` and
 `AprismRuntime.getLogger(unit)`.
+
+## Native Mod List (v26.2-Alpha.2)
+
+Aprism ships a runtime-queryable native mod list in
+`com.aprism.loader.modmenu` (goal #7, part 1), the registry backing the
+future in-game mod menu in the style of Fabric Mod Menu / the NeoForge
+native mod menu:
+
+- **ModListEntry** — immutable per-unit snapshot: id, version, display
+  name, description, kind (`mod`/`extension`), loader key, source archive
+  name, dependency declarations, and lifecycle state.
+- **ModListState** — DISCOVERED / LOADED / FAILED / DISABLED.
+- **ModListRegistry** — rebuilt from scratch on every load pass; exposes
+  `getAll` / `getMods` / `getExtensions` / `getFailed` sorted by id.
+
+Runtime wiring: `performLoad()` calls `rebuildModList()` after loading,
+populating LOADED entries from every loaded mod and extension container and
+FAILED entries from the load report's failures (a `loadReport` is created
+on demand so direct `performLoad` callers also see failures). Accessor:
+`AprismRuntime.getModList()`. Cleared on `shutdown()`.
