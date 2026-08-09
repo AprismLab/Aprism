@@ -335,7 +335,12 @@ public final class AprismRuntime {
         }
 
         // Phase 1a: validate and register manifest-driven loader-support folders
-        List<ExtensionLoader.LoadedExtension> raw = extensionLoader.load(extensionsDir);
+        // extensionLoader.load returns an immutable snapshot; copy so we can sort
+        List<ExtensionLoader.LoadedExtension> raw =
+                new ArrayList<>(extensionLoader.load(extensionsDir));
+        // v26.1-Alpha.9 (goal #3): higher priority initializes first
+        raw.sort((a, b) -> Integer.compare(
+                b.manifest().priority(), a.manifest().priority()));
         loadedExtensions.addAll(raw);
 
         // Phase 1b: extract embedded jars into the classloader
@@ -346,7 +351,28 @@ public final class AprismRuntime {
         // Phase 1c: instantiate entrypoints and invoke onInitialize. A failing
         // extension is isolated (logged + reported) so one broken extension
         // cannot take down the whole boot.
+        // v26.1-Alpha.9 (goal #3): validate extension dependencies against the
+        // full discovered set (every extension id plus every provides capability),
+        // then instantiate. Dependencies reference ids or capabilities; a missing
+        // dependency isolates that extension (logged + reported), it does not
+        // abort the boot.
+        java.util.Set<String> available = new java.util.HashSet<>();
         for (ExtensionLoader.LoadedExtension ext : raw) {
+            available.add(ext.manifest().extensionId());
+            if (ext.manifest().provides() != null) {
+                available.addAll(ext.manifest().provides());
+            }
+        }
+        for (ExtensionLoader.LoadedExtension ext : raw) {
+            if (!extensionDependenciesSatisfied(ext, available)) {
+                LOG.warning("Extension " + ext.manifest().extensionId()
+                        + " has unsatisfied depends; skipping it");
+                if (loadReport != null) {
+                    loadReport.recordFailure("extension", ext.manifest().extensionId(),
+                            ext.manifest().loaderRange(), 0, "unsatisfied depends");
+                }
+                continue;
+            }
             long t0 = System.nanoTime();
             try {
                 instantiateExtension(ext);
@@ -365,12 +391,53 @@ public final class AprismRuntime {
             }
         }
 
+        // v26.1-Alpha.9 (goal #3): post-initialize hook after all extensions
+        for (LoadedExtensionContainer container : extensionContainers.values()) {
+            Object instance = container.getInstance();
+            if (instance instanceof IAprismExtension extension) {
+                try {
+                    ExtensionContext context = new ExtensionContextImpl(
+                            container, eventBus, registry,
+                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                    extension.onPostInitialize(context);
+                } catch (RuntimeException e) {
+                    LOG.warning("Extension " + container.getExtensionId()
+                            + " failed in onPostInitialize: " + e.getMessage());
+                }
+            }
+        }
+
         if (loadReport != null) {
             loadReport.endPhase1();
         }
         LOG.info("Loaded " + extensionContainers.size() + " Aprism extension(s); "
                 + extensionLoader.getLoaderFolders().size() + " loader-support folder(s) registered");
         return List.copyOf(extensionContainers.values());
+    }
+
+
+    /**
+     * Whether all {@code depends} entries of an extension are satisfied by the
+     * available set (every discovered extension id plus every provides
+     * capability). Version-range matching of dependency versions is deferred to
+     * a future alpha; presence is checked here. (v26.1-Alpha.9, goal #3)
+     *
+     * @param ext       the extension to validate
+     * @param available the set of available extension ids and capabilities
+     * @return true when every depends entry is present in available
+     */
+    private boolean extensionDependenciesSatisfied(
+            ExtensionLoader.LoadedExtension ext, java.util.Set<String> available) {
+        java.util.Map<String, String> depends = ext.manifest().depends();
+        if (depends == null || depends.isEmpty()) {
+            return true;
+        }
+        for (String depId : depends.keySet()) {
+            if (!available.contains(depId)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1226,6 +1293,23 @@ public final class AprismRuntime {
      * holds file locks on every added jar.
      */
     public void shutdown() {
+        // v26.1-Alpha.9 (goal #3): shutdown hook for extensions
+        for (LoadedExtensionContainer container : extensionContainers.values()) {
+            Object instance = container.getInstance();
+            if (instance instanceof IAprismExtension extension) {
+                try {
+                    ExtensionContext context = new ExtensionContextImpl(
+                            container, eventBus, registry,
+                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                    extension.onShutdown(context);
+                } catch (RuntimeException e) {
+                    LOG.warning("Extension " + container.getExtensionId()
+                            + " failed in onShutdown: " + e.getMessage());
+                }
+            }
+        }
+        // Runs BEFORE the shared objects are nulled so the context handed to
+        // onShutdown still exposes a live event bus, registry and registrar.
         if (classLoader != null) {
             try {
                 classLoader.close();

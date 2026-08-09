@@ -417,8 +417,8 @@ The Aprism sandbox is capability-based: a mod's manifest declares the capabiliti
 ## Version Line (v26.1-Alpha.7)
 
 Aprism supports the JE version line **1.20 .. 26.2** via
-. Each version resolves to a
- describing its obfuscation profile (REMAPPED pre-26.1,
+`VersionLineRegistry`. Each version resolves to a
+`VersionLineEntry` describing its obfuscation profile (REMAPPED pre-26.1,
 NO_REMAP 26.1+), Java baseline (17 / 21 / 25), and mappings source
 (Intermediary / none). Versions below 1.20 are outside the supported line;
 versions above 26.2 follow the unobfuscated line but are reported as beyond
@@ -427,10 +427,10 @@ the explicit window.
 ## Lower-Level API (v26.1-Alpha.8)
 
 Aprism exposes a lower-level capability layer in
- (goal #2, aligned with the MCJEBooster layer):
+`com.aprism.loader.lowlevel` (goal #2, aligned with the MCJEBooster layer):
 
 - **ClassRedefiner** — runtime class redefinition and retransformation via
-  , for re-shaping already-loaded
+  `java.lang.instrument.Instrumentation`, for re-shaping already-loaded
   classes (e.g. the server tick loop) after JVM start.
 - **MethodHookRegistry** — programmatic method hooks keyed by
   class/method/descriptor, fired from injected bytecode.
@@ -442,3 +442,30 @@ Hooks are on-enter and cheap when idle (passthrough when no hook registered).
 A throwing hook is logged and swallowed so a faulty hook never crashes the
 host game.
 
+
+## Stronger AEP Capabilities (v26.1-Alpha.9)
+
+The Aprism Extension (.aep) model gained three production capabilities
+(goal #3) that bring the extension layer in line with the loader-support
+needs of AprismRefract:
+
+- **Priority ordering** — `aprism.extension.json` accepts an optional
+  `priority` integer (defaults to 0). Extensions initialize in descending
+  priority order, so foundational extensions (e.g. a loader-support bridge
+  that other extensions build on) can declare they must run first.
+- **Dependency validation** — an extension's `depends` map is validated
+  against the full discovered set before instantiation. The available set
+  contains every extension id plus every declared `provides` capability, so
+  extensions can depend on either a concrete extension or an abstract
+  capability. An unsatisfied dependency isolates only that extension
+  (logged + recorded in the load report); the boot continues.
+- **Lifecycle hooks** — `IAprismExtension` declares two new default
+  no-op methods: `onPostInitialize` (runs once after every extension has
+  completed `onInitialize`, for cross-extension wiring) and `onShutdown`
+  (runs when the runtime shuts down, for releasing native or OS resources).
+  The shutdown hook runs before the runtime nulls its shared objects, so
+  the context handed to `onShutdown` still exposes a live event bus and
+  registry. A throwing hook isolates only that extension.
+
+Interface contract note: both hooks are additive `default` methods;
+existing extensions compile and run unchanged.

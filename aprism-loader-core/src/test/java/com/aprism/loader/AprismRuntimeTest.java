@@ -19,8 +19,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.aprism.api.AprismPhase;
 import com.aprism.api.ExtensionType;
+import com.aprism.api.ExtensionContext;
 import com.aprism.loader.testexts.DynamicSupportExtension;
+import com.aprism.loader.testexts.LifecycleRecordingExtension;
 import com.aprism.loader.testexts.RecordingExtension;
+import com.aprism.loader.testexts.ThrowingPostInitExtension;
 import com.aprism.loader.testmods.RecordingMod;
 
 /**
@@ -43,6 +46,8 @@ class AprismRuntimeTest {
     private static final String RECORDING_MOD_CLASS = "com.aprism.loader.testmods.RecordingMod";
     private static final String RECORDING_EXT_CLASS = "com.aprism.loader.testexts.RecordingExtension";
     private static final String DYNAMIC_SUPPORT_EXT_CLASS = "com.aprism.loader.testexts.DynamicSupportExtension";
+    private static final String LIFECYCLE_EXT_CLASS = "com.aprism.loader.testexts.LifecycleRecordingExtension";
+    private static final String THROWING_POSTINIT_EXT_CLASS = "com.aprism.loader.testexts.ThrowingPostInitExtension";
 
     @TempDir
     Path gameRoot;
@@ -52,6 +57,8 @@ class AprismRuntimeTest {
         RecordingMod.resetGlobal();
         RecordingExtension.resetGlobal();
         DynamicSupportExtension.reset();
+        LifecycleRecordingExtension.resetGlobal();
+        ThrowingPostInitExtension.resetGlobal();
         // Re-initialize the singleton runtime for each test
         AprismRuntime.instance().initialize(null, "26.0.0", "JE", "1.21.4");
     }
@@ -497,6 +504,136 @@ class AprismRuntimeTest {
         }
     }
 
+    @Nested
+    class ExtensionPriorityOrdering {
+        @Test
+        void extensionsInitializeInDescendingPriorityOrder() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Low.aep"),
+                    extensionJsonWithPriority("low-ext", "api-extension", RECORDING_EXT_CLASS, 0));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Mid.aep"),
+                    extensionJsonWithPriority("mid-ext", "api-extension", RECORDING_EXT_CLASS, 5));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("High.aep"),
+                    extensionJsonWithPriority("high-ext", "api-extension", RECORDING_EXT_CLASS, 10));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactly("INIT:high-ext", "INIT:mid-ext", "INIT:low-ext");
+        }
+
+        @Test
+        void allExtensionsLoadedRegardlessOfPriority() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("A.aep"),
+                    extensionJsonWithPriority("ext-a", "api-extension", RECORDING_EXT_CLASS, 10));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("B.aep"),
+                    extensionJsonWithPriority("ext-b", "api-extension", RECORDING_EXT_CLASS, 1));
+
+            List<LoadedExtensionContainer> containers =
+                    AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(containers).extracting(LoadedExtensionContainer::getExtensionId)
+                    .containsExactlyInAnyOrder("ext-a", "ext-b");
+        }
+    }
+
+    @Nested
+    class ExtensionDependencyValidation {
+        @Test
+        void extensionWithSatisfiedDependsLoads() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithDepends("base-ext", RECORDING_EXT_CLASS, "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithDepends("dep-ext", RECORDING_EXT_CLASS, "[]",
+                            "{\"base-ext\":\"*\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:base-ext", "INIT:dep-ext");
+        }
+
+        @Test
+        void extensionWithUnsatisfiedDependsIsIsolated() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithDepends("base-ext", RECORDING_EXT_CLASS, "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithDepends("dep-ext", RECORDING_EXT_CLASS, "[]",
+                            "{\"ghost-ext\":\"*\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:base-ext");
+            assertThat(AprismRuntime.instance().getExtension("dep-ext")).isNull();
+            assertThat(AprismRuntime.instance().getExtension("base-ext")).isNotNull();
+        }
+
+        @Test
+        void extensionDependingOnProvidedCapabilityLoads() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Provider.aep"),
+                    extensionJsonWithDepends("provider-ext", RECORDING_EXT_CLASS,
+                            "[\"fa-loader\"]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Consumer.aep"),
+                    extensionJsonWithDepends("consumer-ext", RECORDING_EXT_CLASS, "[]",
+                            "{\"fa-loader\":\"*\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:provider-ext", "INIT:consumer-ext");
+        }
+    }
+
+    @Nested
+    class ExtensionLifecycleHooks {
+        @Test
+        void postInitializeRunsAfterAllExtensionsInitialize() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext1.aep"),
+                    extensionJson("ext1", "api-extension", LIFECYCLE_EXT_CLASS, null, null));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext2.aep"),
+                    extensionJson("ext2", "api-extension", LIFECYCLE_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            List<String> log = LifecycleRecordingExtension.getGlobalLog();
+            assertThat(log).hasSize(4);
+            assertThat(log.subList(0, 2)).containsExactlyInAnyOrder("INIT:ext1", "INIT:ext2");
+            assertThat(log.subList(2, 4))
+                    .containsExactlyInAnyOrder("POSTINIT:ext1", "POSTINIT:ext2");
+        }
+
+        @Test
+        void shutdownHookRunsOnRuntimeShutdownWithLiveContext() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext1.aep"),
+                    extensionJson("ext1", "api-extension", LIFECYCLE_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+            AprismRuntime.instance().shutdown();
+
+            assertThat(LifecycleRecordingExtension.getGlobalLog())
+                    .containsExactly("INIT:ext1", "POSTINIT:ext1", "SHUTDOWN:ext1");
+            ExtensionContext context = LifecycleRecordingExtension.getLastShutdownContext();
+            assertThat(context).isNotNull();
+            assertThat(context.getExtension()).isNotNull();
+            assertThat(context.getEventBus()).isNotNull();
+            assertThat(context.getRegistry()).isNotNull();
+        }
+
+        @Test
+        void failingPostInitializeDoesNotBlockOtherExtensions() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Thrower.aep"),
+                    extensionJson("thrower", "api-extension", THROWING_POSTINIT_EXT_CLASS, null, null));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Ext1.aep"),
+                    extensionJson("ext1", "api-extension", LIFECYCLE_EXT_CLASS, null, null));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(ThrowingPostInitExtension.getGlobalLog())
+                    .contains("INIT:thrower", "POSTINIT-THROW:thrower");
+            assertThat(LifecycleRecordingExtension.getGlobalLog())
+                    .contains("INIT:ext1", "POSTINIT:ext1");
+        }
+    }
+
     // ----- fixture helpers -----
 
     /**
@@ -645,6 +782,65 @@ class AprismRuntimeTest {
                   "depends": {}
                 }
                 """.formatted(extensionId, type, loaderKeyJson, loaderRangeJson, entryJson);
+    }
+
+    /**
+     * Builds an extension manifest JSON with an explicit priority
+     * (v26.1-Alpha.9, goal #3).
+     *
+     * @param extensionId the extension id
+     * @param type        the extension type
+     * @param entrypoint  the entrypoint class (may be {@code null})
+     * @param priority    the initialization priority
+     * @return the JSON content
+     */
+    private static String extensionJsonWithPriority(String extensionId, String type,
+            String entrypoint, int priority) {
+        String entryJson = entrypoint == null ? "null" : "\"" + entrypoint + "\"";
+        return """
+                {
+                  "extensionId": "%s",
+                  "type": "%s",
+                  "aprismRange": "[26.0.0,27.0.0)",
+                  "loaderKey": null,
+                  "loaderRange": null,
+                  "mcEdit": null,
+                  "mcVersion": null,
+                  "entrypoint": %s,
+                  "provides": [],
+                  "depends": {},
+                  "priority": %d
+                }
+                """.formatted(extensionId, type, entryJson, priority);
+    }
+
+    /**
+     * Builds an extension manifest JSON with explicit provides and depends
+     * (v26.1-Alpha.9, goal #3).
+     *
+     * @param extensionId  the extension id
+     * @param entrypoint   the entrypoint class (may be {@code null})
+     * @param providesJson the provides array as JSON text
+     * @param dependsJson  the depends object as JSON text
+     * @return the JSON content
+     */
+    private static String extensionJsonWithDepends(String extensionId, String entrypoint,
+            String providesJson, String dependsJson) {
+        String entryJson = entrypoint == null ? "null" : "\"" + entrypoint + "\"";
+        return """
+                {
+                  "extensionId": "%s",
+                  "type": "api-extension",
+                  "aprismRange": "[26.0.0,27.0.0)",
+                  "loaderKey": null,
+                  "loaderRange": null,
+                  "mcEdit": null,
+                  "mcVersion": null,
+                  "entrypoint": %s,
+                  "provides": %s,
+                  "depends": %s
+                }
+                """.formatted(extensionId, entryJson, providesJson, dependsJson);
     }
 
     /**
