@@ -178,6 +178,32 @@ class AprismRuntimeTest {
                     .hasMessageContaining("b")
                     .hasMessageContaining("2.0.0");
         }
+
+        @Test
+        void aprismEnvironmentIdResolves() throws Exception {
+            // OPEN-1 (closed in v26.0): a mod may depend on the running
+            // Aprism Loader itself. The environment map supplies the
+            // normalized running version ("26.0.0" here), so >=26.0 resolves.
+            writeAje(gameRoot.resolve("mods").resolve("a.aje"), "a", "1.0.0",
+                    RECORDING_MOD_CLASS, java.util.Map.of("aprism", ">=26.0"));
+
+            AprismRuntime.instance().performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+
+            assertThat(AprismRuntime.instance().getMod("a"))
+                    .as("a mod depending on the aprism environment id must load")
+                    .isNotNull();
+        }
+
+        @Test
+        void aprismEnvironmentIdVersionMismatchAborts() throws IOException {
+            writeAje(gameRoot.resolve("mods").resolve("a.aje"), "a", "1.0.0",
+                    RECORDING_MOD_CLASS, java.util.Map.of("aprism", ">=99.0"));
+
+            assertThatThrownBy(() ->
+                    AprismRuntime.instance().performLoad(gameRoot, gameRoot.resolve("aprism-extensions")))
+                    .hasMessageContaining("requires")
+                    .hasMessageContaining("aprism");
+        }
     }
 
     @Nested
