@@ -146,7 +146,7 @@ public final class ExtensionLoader {
      * @param version the raw runtime version
      * @return the plain release form, or the input unchanged when it cannot be normalized
      */
-    private static String normalizeAprismVersion(String version) {
+    static String normalizeAprismVersion(String version) {
         if (version == null || version.isBlank()) {
             return version;
         }

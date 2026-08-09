@@ -44,6 +44,7 @@ class AprismAgentTest {
     @AfterEach
     void tearDown() {
         AprismRuntime.instance().shutdown();
+        System.clearProperty("aprism.agent.active");
     }
 
     private static Instrumentation fakeInstrumentation() {
@@ -122,6 +123,19 @@ class AprismAgentTest {
         assertThat(AprismRuntime.instance().getMods())
                 .as("No gameRoot means no production load")
                 .isEmpty();
+    }
+
+    @Test
+    void premainSetsAgentActiveSystemProperty() {
+        // OPEN-3 (closed in v26.0): the agent announces itself via a system
+        // property so companion loaders (e.g. AprismPrismate) can detect a
+        // mutually exclusive Aprism agent in the same JVM.
+        AprismAgent.premain("aprismVersion=v26.0-Alpha.1;mcEdit=JE;mcVersion=26.2",
+                fakeInstrumentation());
+
+        assertThat(System.getProperty("aprism.agent.active"))
+                .as("the agent must set aprism.agent.active=true")
+                .isEqualTo("true");
     }
 
     @Test

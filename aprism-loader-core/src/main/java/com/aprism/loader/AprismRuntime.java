@@ -464,6 +464,14 @@ public final class AprismRuntime {
         environment.put("quilt_loader", ModDiscoverer.QUILT_LOADER_VERSION);
         environment.put("liteloader", ModDiscoverer.LITELOADER_LOADER_VERSION);
         environment.put("java", Integer.toString(Runtime.version().feature()));
+        // OPEN-1 (closed in v26.0): the running Aprism Loader itself is an
+        // environment provider, so mods may declare depends: {"aprism":
+        // ">=26.0"}. Supply the normalized running version (v-prefix and
+        // prerelease suffix stripped) so such ranges resolve here exactly as
+        // they do in ExtensionLoader's aprismRange validation.
+        if (aprismVersion != null && !aprismVersion.isBlank()) {
+            environment.put("aprism", ExtensionLoader.normalizeAprismVersion(aprismVersion));
+        }
         DependencyResolver resolver = new DependencyResolver();
         List<ModContainer> ordered = resolver.resolve(
                 discovered.stream().map(ModDiscoverer.DiscoveredMod::manifest).toList(),

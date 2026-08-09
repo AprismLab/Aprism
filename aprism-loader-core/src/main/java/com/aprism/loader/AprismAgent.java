@@ -69,6 +69,10 @@ public final class AprismAgent {
      */
     private static void initialize(Instrumentation inst, String args) {
         Map<String, String> kv = parseArgs(args);
+        // OPEN-3 (closed in v26.0): announce the agent's presence so that
+        // companion loaders (e.g. AprismPrismate) can detect a mutually
+        // exclusive Aprism agent in the same JVM and refuse to boot cleanly.
+        System.setProperty("aprism.agent.active", "true");
         try {
             AprismClassTransformer transformer = new AprismClassTransformer();
             inst.addTransformer(transformer, true);
