@@ -6,6 +6,8 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.aprism.loader.lowlevel.MethodHookTransformer;
+import com.aprism.loader.lowlevel.MethodHookRegistry;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -77,6 +79,7 @@ public final class AprismClassTransformer implements ClassFileTransformer {
         byte[] bytes = applyRegisteredTransformations(className, classfileBuffer);
         bytes = applyMixins(className, bytes);
         bytes = applyAccessWideners(className, bytes);
+        bytes = applyMethodHooks(className, bytes);
         return bytes;
     }
 
@@ -145,6 +148,34 @@ public final class AprismClassTransformer implements ClassFileTransformer {
             ClassWriter writer = new ClassWriter(reader, 0);
             ClassVisitor visitor = new AccessWideningVisitor(Opcodes.ASM9, writer, rules);
             reader.accept(visitor, 0);
+            return writer.toByteArray();
+        } catch (Exception e) {
+            return bytes;
+        }
+    }
+
+
+    /**
+     * Applies registered programmatic method hooks (v26.1-Alpha.8 lower-level
+     * API, goal #2). For each method with a registered hook, injects a
+     * {@code MethodHookRegistry.fire(key)} dispatch call at method entry. When
+     * no hooks are registered for any method of the class, the original bytes
+     * are returned unchanged (no ASM pass).
+     *
+     * @param className the slashed class name
+     * @param bytes     the bytecode to transform
+     * @return the (possibly rewritten) bytecode
+     */
+    private byte[] applyMethodHooks(String className, byte[] bytes) {
+        if (!MethodHookRegistry.hasAnyHookForClass(className)) {
+            return bytes;
+        }
+        try {
+            ClassReader reader = new ClassReader(bytes);
+            ClassWriter writer = new ClassWriter(reader, 0);
+            MethodHookTransformer transformer =
+                    new MethodHookTransformer(Opcodes.ASM9, writer, className);
+            reader.accept(transformer, 0);
             return writer.toByteArray();
         } catch (Exception e) {
             return bytes;

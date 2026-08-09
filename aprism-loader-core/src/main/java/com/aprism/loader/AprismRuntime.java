@@ -41,6 +41,8 @@ import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.lowlevel.ClassRedefiner;
+import com.aprism.loader.lowlevel.MethodHookRegistry;
 import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
 import com.aprism.manifest.AprismExtensionManifest;
 import com.aprism.manifest.AprismManifest;
@@ -89,6 +91,8 @@ public final class AprismRuntime {
     private Path extensionTempDir;
     private Path modTempDir;
     private Instrumentation instrumentation;
+    /** Lower-level class redefinition API (goal #2). */
+    private ClassRedefiner classRedefiner;
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -158,6 +162,8 @@ public final class AprismRuntime {
             return;
         }
         this.instrumentation = inst;
+        // v26.1-Alpha.8 lower-level API (goal #2): runtime class redefinition.
+        this.classRedefiner = inst != null ? new ClassRedefiner(inst) : null;
         this.aprismVersion = aprismVersion;
         this.mcEdit = mcEdit;
         this.mcVersion = mcVersion;
@@ -256,6 +262,16 @@ public final class AprismRuntime {
     }
 
     /**
+     * Returns the lower-level class redefinition API, or {@code null} when the
+     * runtime was initialized without an instrumentation handle (e.g. tests).
+     *
+     * @return the class redefiner, or {@code null}
+     */
+    public ClassRedefiner getClassRedefiner() {
+        return classRedefiner;
+    }
+
+    /**
      * @return the shared mod classloader, or {@code null} before initialization
      */
     public AprismClassLoader getClassLoader() {
@@ -312,6 +328,8 @@ public final class AprismRuntime {
         loadedExtensions.clear();
         extensionContainers.clear();
         LoaderEntrypointRegistry.clear();
+        MethodHookRegistry.clear();
+        classRedefiner = null;
         if (loadReport != null) {
             loadReport.beginPhase1();
         }

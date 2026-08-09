@@ -424,3 +424,21 @@ NO_REMAP 26.1+), Java baseline (17 / 21 / 25), and mappings source
 versions above 26.2 follow the unobfuscated line but are reported as beyond
 the explicit window.
 
+## Lower-Level API (v26.1-Alpha.8)
+
+Aprism exposes a lower-level capability layer in
+ (goal #2, aligned with the MCJEBooster layer):
+
+- **ClassRedefiner** — runtime class redefinition and retransformation via
+  , for re-shaping already-loaded
+  classes (e.g. the server tick loop) after JVM start.
+- **MethodHookRegistry** — programmatic method hooks keyed by
+  class/method/descriptor, fired from injected bytecode.
+- **MethodHookTransformer** — ASM pass that injects a dispatch call into the
+  entry of hooked methods; integrated as the fourth pass of the class
+  transformer (after registered transformations, Mixin, access wideners).
+
+Hooks are on-enter and cheap when idle (passthrough when no hook registered).
+A throwing hook is logged and swallowed so a faulty hook never crashes the
+host game.
+
