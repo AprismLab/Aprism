@@ -41,6 +41,10 @@ import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.logging.AprismLogging;
+import com.aprism.loader.logging.AprismLogger;
+import com.aprism.loader.logging.ConsoleSink;
+import com.aprism.loader.logging.FileSink;
 import com.aprism.loader.lowlevel.ClassRedefiner;
 import com.aprism.loader.lowlevel.MethodHookRegistry;
 import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
@@ -93,6 +97,8 @@ public final class AprismRuntime {
     private Instrumentation instrumentation;
     /** Lower-level class redefinition API (goal #2). */
     private ClassRedefiner classRedefiner;
+    /** Structured logging facility (v26.2-Alpha.1, goal #6). */
+    private AprismLogging logging;
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -164,6 +170,12 @@ public final class AprismRuntime {
         this.instrumentation = inst;
         // v26.1-Alpha.8 lower-level API (goal #2): runtime class redefinition.
         this.classRedefiner = inst != null ? new ClassRedefiner(inst) : null;
+        // v26.2-Alpha.1 structured logging facility (goal #6): console sink by
+        // default; a file sink is attached under aprism-logs/ once the game
+        // root is known (performLoad). The retained ring buffer backs crash
+        // reports and the load report.
+        this.logging = new AprismLogging();
+        this.logging.attachSink(new ConsoleSink());
         this.aprismVersion = aprismVersion;
         this.mcEdit = mcEdit;
         this.mcVersion = mcVersion;
@@ -248,6 +260,53 @@ public final class AprismRuntime {
      */
     public McProfile getMcProfile() {
         return mcProfile;
+    }
+
+    /**
+     * Returns the structured logging facility (v26.2-Alpha.1, goal #6).
+     * Available after {@link #initialize}; sinks fan out per-unit records and
+     * the retained ring buffer backs crash reports and the load report.
+     *
+     * @return the logging facility, or null before initialize
+     */
+    public AprismLogging getLogging() {
+        return logging;
+    }
+
+    /**
+     * Obtains a per-unit structured logger (v26.2-Alpha.1, goal #6).
+     *
+     * @param unit the unit name (mod id, extension id, or component)
+     * @return the logger bound to the facility and unit
+     */
+    public AprismLogger getLogger(String unit) {
+        if (logging == null) {
+            throw new IllegalStateException("runtime not initialized");
+        }
+        return logging.getLogger(unit);
+    }
+
+    /**
+     * Attaches the aprism-logs file sink once the game root is known
+     * (v26.2-Alpha.1, goal #6). Idempotent per game root: repeated
+     * performLoad calls against the same root do not double-attach.
+     *
+     * @param gameRoot the game instance root
+     */
+    private void attachLogFileSink(Path gameRoot) {
+        if (logging == null || gameRoot == null) {
+            return;
+        }
+        for (var sink : logging.getSinks()) {
+            if (sink instanceof FileSink) {
+                return;
+            }
+        }
+        try {
+            logging.attachSink(new FileSink(gameRoot.resolve("aprism-logs").resolve("aprism.log")));
+        } catch (IOException e) {
+            LOG.warning("Could not open aprism-logs/aprism.log: " + e.getMessage());
+        }
     }
 
     /**
@@ -697,6 +756,7 @@ public final class AprismRuntime {
      */
     public void performLoad(Path gameRoot, Path extensionsDir) throws DependencyResolutionException {
         this.gameRoot = gameRoot;
+        attachLogFileSink(gameRoot);
         loadExtensions(extensionsDir);
         if ("BE".equalsIgnoreCase(mcEdit)) {
             loadBedrockMods(gameRoot);
@@ -1310,6 +1370,12 @@ public final class AprismRuntime {
         }
         // Runs BEFORE the shared objects are nulled so the context handed to
         // onShutdown still exposes a live event bus, registry and registrar.
+        // v26.2-Alpha.1: flush and close the logging facility (sinks keep the
+        // retained ring buffer for post-shutdown inspection).
+        if (logging != null) {
+            logging.close();
+            logging = null;
+        }
         if (classLoader != null) {
             try {
                 classLoader.close();

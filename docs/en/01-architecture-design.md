@@ -469,3 +469,29 @@ needs of AprismRefract:
 
 Interface contract note: both hooks are additive `default` methods;
 existing extensions compile and run unchanged.
+
+## Structured Logging (v26.2-Alpha.1)
+
+Aprism ships a structured logging facility in `com.aprism.loader.logging`
+(goal #6), layered on top of the existing per-unit loggers:
+
+- **AprismLogging** — the central facility. Owns the sink fan-out, the
+  level threshold (default INFO), and the retained ring buffer. Fail-safe:
+  a sink that throws is isolated and never propagates into the logging call
+  site.
+- **AprismLogger** — cheap per-unit loggers (mod id, extension id, or
+  runtime component) obtained from the facility; TRACE/DEBUG/INFO/WARN/
+  ERROR conveniences plus level+throwable logging.
+- **AprismLogRecord** — immutable record (wall clock, level, unit, message,
+  optional throwable) rendered as `[ISO-8601] LEVEL unit - message`.
+- **AprismLogRingBuffer** — bounded in-memory retention (default 5000
+  records) always attached; backs crash reports and the load report.
+- **ConsoleSink** — stdout for TRACE..INFO, stderr for WARN/ERROR.
+- **FileSink** — appends rendered records to `<game-root>/aprism-logs/aprism.log`
+  once the game root is known (attached in `performLoad`); write failures
+  are swallowed.
+
+Runtime wiring: the facility is created in `initialize()` (console sink),
+the file sink is attached in `performLoad()`, and `shutdown()` flushes and
+closes the facility. Accessors: `AprismRuntime.getLogging()` and
+`AprismRuntime.getLogger(unit)`.
