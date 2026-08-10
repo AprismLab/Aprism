@@ -224,6 +224,10 @@ public final class AprismRuntime {
         // The bootstrap is fully fault-tolerant: any failure is logged and
         // swallowed so a broken Mixin environment never blocks game startup.
         AprismMixinBootstrap.bootstrap(classLoader);
+        // v26.2-Alpha.6 hardening: mirror key lifecycle events into the
+        // structured facility so the crash report's log tail is actionable.
+        this.logging.getLogger("runtime").info("Aprism runtime initialized: "
+                + aprismVersion + " / " + mcEdit + " / " + mcVersion);
     }
 
     /**
@@ -833,6 +837,11 @@ public final class AprismRuntime {
      */
     public void performLoad(Path gameRoot, Path extensionsDir) throws DependencyResolutionException {
         this.gameRoot = gameRoot;
+        // v26.2-Alpha.6 hardening: structured lifecycle trace (backs the crash
+        // report log tail).
+        if (logging != null) {
+            logging.getLogger("runtime").info("performLoad start: gameRoot=" + gameRoot);
+        }
         // v26.2-Alpha.2 (goal #7): ensure a load report exists so failed
         // units are recorded even when callers invoke performLoad directly
         // (bootstrapProduction also creates one; keep the earlier instance).
@@ -859,6 +868,11 @@ public final class AprismRuntime {
         // registry from the loaded containers plus the load report, so the
         // future in-game mod menu sees every unit with its final state.
         rebuildModList();
+        if (logging != null) {
+            logging.getLogger("runtime").info("performLoad complete: "
+                    + mods.size() + " mod(s), "
+                    + extensionContainers.size() + " extension(s)");
+        }
     }
 
     /**

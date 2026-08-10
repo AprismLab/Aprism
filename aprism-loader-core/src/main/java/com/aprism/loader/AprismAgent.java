@@ -29,6 +29,9 @@ import java.util.Map;
  */
 public final class AprismAgent {
 
+    /** Maximum number of recent structured log records embedded in a crash report. */
+    private static final int MAX_LOG_TAIL = 50;
+
     private AprismAgent() {
     }
 
@@ -121,9 +124,18 @@ public final class AprismAgent {
         try {
             StringWriter sw = new StringWriter();
             t.printStackTrace(new PrintWriter(sw));
-            String report = "Aprism Loader crash report\n"
-                    + "==========================\n"
-                    + sw;
+            StringBuilder report = new StringBuilder();
+            report.append("Aprism Loader crash report\n")
+                  .append("==========================\n\n")
+                  .append("Cause\n-----\n")
+                  .append(sw);
+            // v26.2-Alpha.6 (goal #7 hardening): attach the recent structured
+            // log tail and the mod list snapshot so a failed boot leaves an
+            // actionable trace. Both reads are defensive: during a crash the
+            // runtime may be only partially initialized, and the report writer
+            // must never itself throw.
+            appendLogTail(report);
+            appendModList(report);
             Path reportPath;
             if (gameRootArg != null && !gameRootArg.isBlank()) {
                 Path dir = Path.of(gameRootArg).resolve("aprism-crashes");
@@ -132,10 +144,71 @@ public final class AprismAgent {
             } else {
                 reportPath = Path.of("aprism-crash-" + System.currentTimeMillis() + ".txt");
             }
-            Files.writeString(reportPath, report);
+            Files.writeString(reportPath, report.toString());
             java.util.logging.Logger.getLogger("AprismAgent").warning(
                     "Aprism crash report written to " + reportPath);
         } catch (IOException | RuntimeException ignored) {
+            // best-effort only
+        }
+    }
+
+    /**
+     * Appends the most recent structured log records to the report body
+     * (v26.2-Alpha.6). Swallows any failure so the report writer stays
+     * best-effort.
+     *
+     * @param report the report body under construction
+     */
+    private static void appendLogTail(StringBuilder report) {
+        try {
+            AprismRuntime runtime = AprismRuntime.instance();
+            if (runtime == null || runtime.getLogging() == null) {
+                return;
+            }
+            var retained = runtime.getLogging().getRetained();
+            var records = retained.snapshot();
+            if (records.isEmpty()) {
+                return;
+            }
+            int from = Math.max(0, records.size() - MAX_LOG_TAIL);
+            report.append("\nRecent log (last ")
+                  .append(records.size() - from)
+                  .append(")\n------------\n");
+            for (int i = from; i < records.size(); i++) {
+                report.append(records.get(i).render()).append('\n');
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort only
+        }
+    }
+
+    /**
+     * Appends the mod list snapshot to the report body (v26.2-Alpha.6).
+     * Swallows any failure so the report writer stays best-effort.
+     *
+     * @param report the report body under construction
+     */
+    private static void appendModList(StringBuilder report) {
+        try {
+            AprismRuntime runtime = AprismRuntime.instance();
+            if (runtime == null) {
+                return;
+            }
+            var entries = runtime.getModList().getAll();
+            if (entries.isEmpty()) {
+                return;
+            }
+            report.append("\nMod list (")
+                  .append(entries.size())
+                  .append(")\n----------\n");
+            for (var entry : entries) {
+                report.append('[').append(entry.state()).append("] ")
+                      .append(entry.kind()).append(' ')
+                      .append(entry.id()).append(' ')
+                      .append(entry.version()).append(' ')
+                      .append('(').append(entry.loaderKey()).append(")\n");
+            }
+        } catch (RuntimeException ignored) {
             // best-effort only
         }
     }

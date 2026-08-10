@@ -563,3 +563,20 @@ the core never guesses foreign conventions.
 
 Verification: the five cross-repo E2E tests (`Refract*AepE2ETest`) run the
 branch-built `.aep` archives against the real runtime and all pass.
+
+
+## Crash Report Hardening (v26.2-Alpha.6)
+
+The agent's best-effort crash report (`<gameRoot>/aprism-crashes/`) is
+enriched beyond the raw stack trace so a failed boot is actionable:
+
+- **Cause** — the full stack trace of the failure.
+- **Recent log** — the last 50 records from the structured logging ring
+  buffer (goal #6), rendered as `[ISO-8601] LEVEL unit - message`.
+- **Mod list** — the mod list snapshot (goal #7) with each unit's state,
+  kind, id, version, and loader key.
+
+To make the log tail actionable, the runtime mirrors key lifecycle events
+(initialize, performLoad start/complete) into the structured facility. All
+report reads are defensive: during a crash the runtime may be only partially
+initialized, and the report writer never itself throws.

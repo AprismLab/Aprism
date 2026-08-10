@@ -157,6 +157,18 @@ class AprismAgentTest {
         assertThat(Files.list(crashDir).count())
                 .as("A crash report should be written on bootstrap failure")
                 .isGreaterThanOrEqualTo(1);
+
+        // v26.2-Alpha.6 hardening: the crash report embeds the failure cause
+        // and the recent structured-log tail so a failed boot is actionable.
+        try (var crashFiles = Files.list(crashDir)) {
+            Path report = crashFiles.findFirst().orElseThrow();
+            String content = Files.readString(report);
+            assertThat(content).contains("Aprism Loader crash report");
+            assertThat(content).contains("Cause");
+            assertThat(content)
+                    .as("the report embeds the recent structured-log tail")
+                    .contains("Recent log");
+        }
     }
 
     private static void writeAje(Path ajeFile, String id, String version,
