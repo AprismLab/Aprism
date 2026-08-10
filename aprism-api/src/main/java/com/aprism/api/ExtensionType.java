@@ -17,7 +17,13 @@ public enum ExtensionType {
     PLATFORM_ADAPTER("platform-adapter"),
 
     /** Provides a format conversion pipeline (e.g. JE-to-BE). */
-    CONVERTER("converter");
+    CONVERTER("converter"),
+
+    /**
+     * Provides an AI assistant capability (v26.3-Alpha.4, goal #8).
+     * Experimental / reference-only: no production guarantee.
+     */
+    AI_EXTENSION("ai-extension");
 
     private final String manifestValue;
 

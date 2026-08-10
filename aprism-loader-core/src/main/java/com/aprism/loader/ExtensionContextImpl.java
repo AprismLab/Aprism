@@ -1,8 +1,10 @@
 package com.aprism.loader;
 
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
+import com.aprism.api.ai.AiAssistant;
 import com.aprism.api.AprismEventBus;
 import com.aprism.api.AprismRegistry;
 import com.aprism.api.ExtensionContainer;
@@ -25,6 +27,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
     private final AprismRegistry registry;
     private final Logger logger;
     private final BiConsumer<String, String> loaderSupportRegistrar;
+    private final Consumer<Object> aiAssistantRegistrar;
 
     /**
      * @param extension            the owning extension container
@@ -34,11 +37,29 @@ public final class ExtensionContextImpl implements ExtensionContext {
      */
     public ExtensionContextImpl(ExtensionContainer extension, AprismEventBus eventBus,
             AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar) {
+        this(extension, eventBus, registry, loaderSupportRegistrar, assistant -> {
+            throw new UnsupportedOperationException(
+                    "AI assistant registration is not supported in this context");
+        });
+    }
+
+    /**
+     * @param extension              the owning extension container
+     * @param eventBus               the shared event bus
+     * @param registry               the shared registry
+     * @param loaderSupportRegistrar callback to register a loader-support folder
+     * @param aiAssistantRegistrar   callback to register an AI assistant
+     *                               (v26.3-Alpha.4, goal #8; experimental)
+     */
+    public ExtensionContextImpl(ExtensionContainer extension, AprismEventBus eventBus,
+            AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar,
+            Consumer<Object> aiAssistantRegistrar) {
         this.extension = extension;
         this.eventBus = eventBus;
         this.registry = registry;
         this.logger = Logger.getLogger("aprism.ext." + extension.getExtensionId());
         this.loaderSupportRegistrar = loaderSupportRegistrar;
+        this.aiAssistantRegistrar = aiAssistantRegistrar;
     }
 
     @Override
@@ -70,6 +91,19 @@ public final class ExtensionContextImpl implements ExtensionContext {
             throw new IllegalArgumentException("modFolder must not be blank");
         }
         loaderSupportRegistrar.accept(loaderKey, modFolder);
+    }
+
+    @Override
+    public void registerAiAssistant(Object assistant) {
+        if (assistant == null) {
+            throw new IllegalArgumentException("assistant must not be null");
+        }
+        if (!(assistant instanceof AiAssistant)) {
+            throw new IllegalArgumentException(
+                    "assistant must implement AiAssistant, got "
+                            + assistant.getClass().getName());
+        }
+        aiAssistantRegistrar.accept(assistant);
     }
 
     @Override

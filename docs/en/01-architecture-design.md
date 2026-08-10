@@ -653,3 +653,33 @@ with per-listener isolation (a throwing listener never breaks delivery to
 the rest).
 
 Runtime wiring: `AprismRuntime.getNetworking()`; cleared on shutdown.
+
+
+## AI Support (v26.3-Alpha.4) - Experimental / Reference Only
+
+Goal #8 ships as an explicitly experimental reference surface in
+`com.aprism.api.ai` + `com.aprism.loader.ai`:
+
+- **AiRequest** — prompt + optional context lines + maxTokens + temperature
+  (validated; blank prompts rejected).
+- **AiResponse** — generated text, model id, token accounting, finish
+  reason; `refused()` factory for unavailable/rejected completions.
+- **AiAssistant** — the capability contract: `name()`, `model()`,
+  `isAvailable()`, `complete(request)`. Capability-gated: completions
+  against an unavailable assistant return a refusal, never throw into the
+  game.
+- **LocalModelAdapter** — the seam for on-device / LAN model runtimes
+  (e.g. Ollama-compatible servers); concrete adapters ship inside the
+  providing ai-extension so the core never depends on a specific runtime.
+- **ExtensionType.AI_EXTENSION** (`ai-extension`) — the .aep type for AI
+  capability providers.
+- **ExtensionContext.registerAiAssistant(Object)** — the registration seam
+  (Object-typed to avoid an api -> loader-core circular dependency; the
+  implementation validates the AiAssistant contract at registration).
+- **AiRegistry** — capability-gated completion (`complete(name, request)`
+  returns refusals for unknown / unavailable / throwing assistants),
+  available-assistant listing, runtime wiring via
+  `AprismRuntime.getAiRegistry()`, cleared on shutdown.
+
+No production guarantee is attached to this surface; mods must treat it as
+best-effort and degrade gracefully.

@@ -35,6 +35,7 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.loader.ai.AiRegistry;
 import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.loader.settings.SettingsRegistry;
@@ -109,6 +110,8 @@ public final class AprismRuntime {
     private final GameRegistries gameRegistries = new GameRegistries();
     /** Networking registry (v26.3-Alpha.3, QA0 gap #4). */
     private final NetworkingRegistry networkingRegistry = new NetworkingRegistry();
+    /** AI assistant registry (v26.3-Alpha.4, goal #8; experimental). */
+    private final AiRegistry aiRegistry = new AiRegistry();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -346,6 +349,16 @@ public final class AprismRuntime {
      *
      * @return the settings registry
      */
+    /**
+     * Returns the AI assistant registry (v26.3-Alpha.4, goal #8).
+     * Experimental / reference-only: no production guarantee.
+     *
+     * @return the AI registry
+     */
+    public AiRegistry getAiRegistry() {
+        return aiRegistry;
+    }
+
     /**
      * Returns the networking registry (v26.3-Alpha.3, QA0 gap #4): packet
      * channels, listeners, and the transport seam. Sends are fail-closed
@@ -586,7 +599,8 @@ public final class AprismRuntime {
                 try {
                     ExtensionContext context = new ExtensionContextImpl(
                             container, eventBus, registry,
-                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
+                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
                     extension.onPostInitialize(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -681,7 +695,8 @@ public final class AprismRuntime {
             if (instance instanceof IAprismExtension extension) {
                 ExtensionContext context = new ExtensionContextImpl(
                         container, eventBus, registry,
-                        (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                        (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
+                        assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
                 extension.onInitialize(context);
             } else {
                 LOG.warning("Extension entrypoint " + m.entrypoint()
@@ -1404,7 +1419,8 @@ public final class AprismRuntime {
                 try {
                     ExtensionContext context = new ExtensionContextImpl(
                             container, eventBus, registry,
-                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder));
+                            (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
+                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
                     extension.onShutdown(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -1456,6 +1472,8 @@ public final class AprismRuntime {
         // v26.3-Alpha.3: clear the networking registry (channels, listeners,
         // transport).
         networkingRegistry.clear();
+        // v26.3-Alpha.4: clear the AI assistant registry.
+        aiRegistry.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();

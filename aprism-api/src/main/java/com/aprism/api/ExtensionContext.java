@@ -58,4 +58,20 @@ public interface ExtensionContext {
      * @param handler   the handler to register; must not be {@code null}
      */
     void registerEntrypointHandler(String loaderKey, Object handler);
+
+    /**
+     * Registers an AI assistant capability (v26.3-Alpha.4, goal #8). Called
+     * by {@code ai-extension} extensions to expose an {@code AiAssistant}
+     * implementation to mods through the AI registry.
+     * <strong>Experimental / reference-only: no production guarantee.</strong>
+     *
+     * <p>The assistant is typed as {@code Object} for the same circular-
+     * dependency reason as {@link #registerEntrypointHandler}: the API module
+     * must not depend on loader-core internals. The loader-core
+     * {@code ExtensionContextImpl} validates it implements the
+     * {@code com.aprism.api.ai.AiAssistant} contract at registration time.
+     *
+     * @param assistant the assistant to register; must not be {@code null}
+     */
+    void registerAiAssistant(Object assistant);
 }
