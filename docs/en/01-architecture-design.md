@@ -981,3 +981,32 @@ Fourteen tests cover default-probe guarantees (proven values, unknown
 sentinels, ISA-guarantee-only tokens, case-insensitivity), registry
 activation (deep probe, duplicate rejection, unknown probe, throwing-probe
 fallback, clear reset), value validation, and runtime wiring.
+
+
+## Cross-Language Runtime (v26.4-Alpha.8) - Cpp2Java / Rust2Java reference
+
+Goal: the runtime half of the AprismJDK design §6 cross-language
+transition, built on the NativeBridge seam of v26.4-Alpha.5. This alpha
+ships the loader-level ABI vocabulary, binding registry and
+capability-gated invocation; the binding generators (header consumption,
+stub emission) are build-time concerns that ship separately.
+
+- **ForeignType** — the shared ABI-mapping vocabulary: VOID, BOOL, I8..I64,
+  F32, F64, POINTER, STRING. Structs cross the boundary as POINTER with an
+  agreed layout, keeping the ABI surface small and stable.
+- **ForeignSignature** — function signature expressed entirely in
+  ForeignType terms (name, parameter types, return type, arity).
+- **OwnershipPolicy** — the "who allocates, who frees" convention:
+  CALLER_FREES / CALLEE_OWNS / ARENA_SCOPED.
+- **ForeignBinding** — a bound function: id, library, symbol name, typed
+  signature, ownership, source language (CPP / RUST).
+- **CrossLanguageRuntime** — binding registry + capability-gated
+  invocation through the native bridge seam: unknown binding -> refusal,
+  no provider / unresolved symbol -> refusal, never thrown.
+- Runtime wiring: {@code AprismRuntime.getCrossLanguageRuntime()} (lazy),
+  cleared on shutdown.
+
+Thirteen tests cover the ABI vocabulary (void rejected as parameter,
+return validity, arity), value validation (binding/signature), binding
+registry (register/lookup/duplicate rejection), capability-gated
+invocation (unknown binding, no-provider refusal), and runtime wiring.
