@@ -35,6 +35,7 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
@@ -106,6 +107,8 @@ public final class AprismRuntime {
     private GameEventDispatcher gameEventDispatcher;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
     private final GameRegistries gameRegistries = new GameRegistries();
+    /** Networking registry (v26.3-Alpha.3, QA0 gap #4). */
+    private final NetworkingRegistry networkingRegistry = new NetworkingRegistry();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -343,6 +346,17 @@ public final class AprismRuntime {
      *
      * @return the settings registry
      */
+    /**
+     * Returns the networking registry (v26.3-Alpha.3, QA0 gap #4): packet
+     * channels, listeners, and the transport seam. Sends are fail-closed
+     * until a transport is attached.
+     *
+     * @return the networking registry
+     */
+    public NetworkingRegistry getNetworking() {
+        return networkingRegistry;
+    }
+
     /**
      * Returns the typed game-content registries (v26.3-Alpha.2, QA0 gap #2):
      * block, item, and entity registries with typed content records. The
@@ -1439,6 +1453,9 @@ public final class AprismRuntime {
         }
         // v26.3-Alpha.2: clear the typed game-content registries.
         gameRegistries.clear();
+        // v26.3-Alpha.3: clear the networking registry (channels, listeners,
+        // transport).
+        networkingRegistry.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();

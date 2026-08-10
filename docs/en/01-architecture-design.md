@@ -627,3 +627,29 @@ Runtime wiring: `AprismRuntime.getGameRegistries()`; cleared on shutdown.
 The native game binding (projecting registered content into real Minecraft
 registries) is delegated to the platform adapter layer and is out of scope
 for the loader core.
+
+
+## Networking API (v26.3-Alpha.3)
+
+The QA0 gap #4 (no networking API) is addressed by a transport-neutral
+networking foundation in `com.aprism.api.networking` +
+`com.aprism.loader.networking`:
+
+- **PacketChannel** — a namespaced channel id (`namespace:name`) with
+  validation; mods register channels before using them.
+- **NetworkPacket** — a channel plus a transport-neutral byte payload; mods
+  own (de)serialization.
+- **NetworkDirection** — CLIENT_TO_SERVER / SERVER_TO_CLIENT.
+- **NetworkListener** — receives (packet, direction) pairs for a channel.
+- **NetworkTransport** — the seam that moves bytes across the real game
+  connection. The loader core ships no real transport; the registry is
+  fail-closed when none is attached (sends are refused, never silently
+  dropped).
+
+**NetworkingRegistry** — channel registration (duplicates rejected),
+listener subscribe/unsubscribe, fail-closed `send` (unregistered channel,
+missing transport, and unavailable transport all refuse), and `deliver`
+with per-listener isolation (a throwing listener never breaks delivery to
+the rest).
+
+Runtime wiring: `AprismRuntime.getNetworking()`; cleared on shutdown.
