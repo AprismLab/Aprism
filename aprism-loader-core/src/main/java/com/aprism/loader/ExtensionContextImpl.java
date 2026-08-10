@@ -6,6 +6,7 @@ import java.util.logging.Logger;
 
 import com.aprism.api.ai.AiAssistant;
 import com.aprism.api.AprismEventBus;
+import com.aprism.api.rendering.RenderingProvider;
 import com.aprism.api.AprismRegistry;
 import com.aprism.api.ExtensionContainer;
 import com.aprism.api.ExtensionContext;
@@ -28,6 +29,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
     private final Logger logger;
     private final BiConsumer<String, String> loaderSupportRegistrar;
     private final Consumer<Object> aiAssistantRegistrar;
+    private final Consumer<Object> renderingProviderRegistrar;
 
     /**
      * @param extension            the owning extension container
@@ -40,6 +42,9 @@ public final class ExtensionContextImpl implements ExtensionContext {
         this(extension, eventBus, registry, loaderSupportRegistrar, assistant -> {
             throw new UnsupportedOperationException(
                     "AI assistant registration is not supported in this context");
+        }, provider -> {
+            throw new UnsupportedOperationException(
+                    "rendering provider registration is not supported in this context");
         });
     }
 
@@ -54,12 +59,34 @@ public final class ExtensionContextImpl implements ExtensionContext {
     public ExtensionContextImpl(ExtensionContainer extension, AprismEventBus eventBus,
             AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar,
             Consumer<Object> aiAssistantRegistrar) {
+        this(extension, eventBus, registry, loaderSupportRegistrar, aiAssistantRegistrar,
+                provider -> {
+                    throw new UnsupportedOperationException(
+                            "rendering provider registration is not supported in this context");
+                });
+    }
+
+    /**
+     * @param extension              the owning extension container
+     * @param eventBus               the shared event bus
+     * @param registry               the shared registry
+     * @param loaderSupportRegistrar callback to register a loader-support folder
+     * @param aiAssistantRegistrar   callback to register an AI assistant
+     * @param renderingProviderRegistrar callback to register a rendering
+     *                               provider (v26.3-Alpha.5, goal #9;
+     *                               experimental)
+     */
+    public ExtensionContextImpl(ExtensionContainer extension, AprismEventBus eventBus,
+            AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar,
+            Consumer<Object> aiAssistantRegistrar,
+            Consumer<Object> renderingProviderRegistrar) {
         this.extension = extension;
         this.eventBus = eventBus;
         this.registry = registry;
         this.logger = Logger.getLogger("aprism.ext." + extension.getExtensionId());
         this.loaderSupportRegistrar = loaderSupportRegistrar;
         this.aiAssistantRegistrar = aiAssistantRegistrar;
+        this.renderingProviderRegistrar = renderingProviderRegistrar;
     }
 
     @Override
@@ -91,6 +118,19 @@ public final class ExtensionContextImpl implements ExtensionContext {
             throw new IllegalArgumentException("modFolder must not be blank");
         }
         loaderSupportRegistrar.accept(loaderKey, modFolder);
+    }
+
+    @Override
+    public void registerRenderingProvider(Object provider) {
+        if (provider == null) {
+            throw new IllegalArgumentException("provider must not be null");
+        }
+        if (!(provider instanceof RenderingProvider)) {
+            throw new IllegalArgumentException(
+                    "provider must implement RenderingProvider, got "
+                            + provider.getClass().getName());
+        }
+        renderingProviderRegistrar.accept(provider);
     }
 
     @Override

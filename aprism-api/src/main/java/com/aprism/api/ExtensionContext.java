@@ -74,4 +74,23 @@ public interface ExtensionContext {
      * @param assistant the assistant to register; must not be {@code null}
      */
     void registerAiAssistant(Object assistant);
+
+    /**
+     * Registers a rendering backend provider (v26.3-Alpha.5, goal #9).
+     * Called by {@code rendering-extension} extensions to expose a
+     * {@code RenderingProvider} implementation through the rendering
+     * registry. <strong>Experimental / reference-only: no production
+     * guarantee.</strong>
+     *
+     * <p>The provider is typed as {@code Object} for the same circular-
+     * dependency reason as {@link #registerEntrypointHandler}: the API
+     * module must not depend on loader-core internals. The loader-core
+     * {@code ExtensionContextImpl} validates it implements the
+     * {@code com.aprism.api.rendering.RenderingProvider} contract at
+     * registration time.
+     *
+     * @param provider the rendering provider to register; must not be
+     *                 {@code null}
+     */
+    void registerRenderingProvider(Object provider);
 }

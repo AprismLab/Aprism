@@ -23,7 +23,13 @@ public enum ExtensionType {
      * Provides an AI assistant capability (v26.3-Alpha.4, goal #8).
      * Experimental / reference-only: no production guarantee.
      */
-    AI_EXTENSION("ai-extension");
+    AI_EXTENSION("ai-extension"),
+
+    /**
+     * Provides a rendering backend capability (v26.3-Alpha.5, goal #9).
+     * Experimental / reference-only: no production guarantee.
+     */
+    RENDERING_EXTENSION("rendering-extension");
 
     private final String manifestValue;
 

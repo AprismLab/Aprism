@@ -37,6 +37,7 @@ import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
 import com.aprism.loader.ai.AiRegistry;
 import com.aprism.loader.networking.NetworkingRegistry;
+import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
@@ -112,6 +113,8 @@ public final class AprismRuntime {
     private final NetworkingRegistry networkingRegistry = new NetworkingRegistry();
     /** AI assistant registry (v26.3-Alpha.4, goal #8; experimental). */
     private final AiRegistry aiRegistry = new AiRegistry();
+    /** Rendering provider registry (v26.3-Alpha.5, goal #9; experimental). */
+    private final RenderingRegistry renderingRegistry = new RenderingRegistry();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -349,6 +352,16 @@ public final class AprismRuntime {
      *
      * @return the settings registry
      */
+    /**
+     * Returns the rendering provider registry (v26.3-Alpha.5, goal #9).
+     * Experimental / reference-only: no production guarantee.
+     *
+     * @return the rendering registry
+     */
+    public RenderingRegistry getRenderingRegistry() {
+        return renderingRegistry;
+    }
+
     /**
      * Returns the AI assistant registry (v26.3-Alpha.4, goal #8).
      * Experimental / reference-only: no production guarantee.
@@ -600,7 +613,8 @@ public final class AprismRuntime {
                     ExtensionContext context = new ExtensionContextImpl(
                             container, eventBus, registry,
                             (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
-                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
+                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
                     extension.onPostInitialize(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -696,7 +710,8 @@ public final class AprismRuntime {
                 ExtensionContext context = new ExtensionContextImpl(
                         container, eventBus, registry,
                         (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
-                        assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
+                        assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
                 extension.onInitialize(context);
             } else {
                 LOG.warning("Extension entrypoint " + m.entrypoint()
@@ -1420,7 +1435,8 @@ public final class AprismRuntime {
                     ExtensionContext context = new ExtensionContextImpl(
                             container, eventBus, registry,
                             (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
-                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant));
+                            assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
                     extension.onShutdown(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -1474,6 +1490,8 @@ public final class AprismRuntime {
         networkingRegistry.clear();
         // v26.3-Alpha.4: clear the AI assistant registry.
         aiRegistry.clear();
+        // v26.3-Alpha.5: clear the rendering provider registry.
+        renderingRegistry.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();

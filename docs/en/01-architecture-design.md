@@ -683,3 +683,44 @@ Goal #8 ships as an explicitly experimental reference surface in
 
 No production guarantee is attached to this surface; mods must treat it as
 best-effort and degrade gracefully.
+
+
+## Rendering Pipeline Innovation (v26.3-Alpha.5) - Experimental / Reference Only
+
+Goal #9 ships as an explicitly experimental reference surface in
+`com.aprism.api.rendering` + `com.aprism.loader.rendering`.
+
+### Ecosystem context (as of 2026-08)
+
+Mojang announced the Minecraft Java Edition transition from OpenGL to
+Vulkan in 2026-02; Vulkan 1.3 has been the minimum graphics requirement
+since 2026-07, and macOS runs Vulkan through a translation layer because
+macOS is deprecating OpenGL. The strategic order of backends is therefore
+Vulkan first, with Apple Metal and Microsoft DirectX 12 as experimental
+alternatives rather than upstream targets.
+
+### Reference surface
+
+- **RenderBackend** — OPENGL (deprecated upstream), VULKAN (announced
+  upstream successor), METAL (experimental), DX12 (experimental), with
+  case-insensitive manifest parsing.
+- **RenderCapability** — the feature set a backend exposes on a machine
+  (feature tokens such as {@code ray-query} / {@code compute} /
+  {@code mesh-shader}, plus max texture size).
+- **RenderingProvider** — the provider contract: supported backends,
+  per-backend capability queries, readiness. Actual native rendering
+  libraries ship inside the providing rendering-extension; the core never
+  depends on a specific rendering library.
+- **ExtensionType.RENDERING_EXTENSION** ({@code rendering-extension}) — the
+  .aep type for rendering capability providers.
+- **ExtensionContext.registerRenderingProvider(Object)** — the registration
+  seam (Object-typed for circular-dependency reasons; validated against the
+  RenderingProvider contract at registration).
+- **RenderingRegistry** — capability-gated capability queries
+  ({@code queryCapability(name, backend)} returns empty for unknown /
+  unready providers, unsupported backends, and throwing providers), runtime
+  wiring via {@code AprismRuntime.getRenderingRegistry()}, cleared on
+  shutdown.
+
+No production guarantee is attached to this surface; it is a reference for
+the future native rendering library support line.
