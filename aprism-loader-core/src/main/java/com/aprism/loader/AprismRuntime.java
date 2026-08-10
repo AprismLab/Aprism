@@ -35,6 +35,7 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.loader.registry.GameRegistries;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
@@ -103,6 +104,8 @@ public final class AprismRuntime {
     private final SettingsRegistry settingsRegistry = new SettingsRegistry();
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
+    /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
+    private final GameRegistries gameRegistries = new GameRegistries();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -340,6 +343,18 @@ public final class AprismRuntime {
      *
      * @return the settings registry
      */
+    /**
+     * Returns the typed game-content registries (v26.3-Alpha.2, QA0 gap #2):
+     * block, item, and entity registries with typed content records. The
+     * native game binding (projecting registered content into real Minecraft
+     * registries) is delegated to the platform adapter layer.
+     *
+     * @return the typed game registries
+     */
+    public GameRegistries getGameRegistries() {
+        return gameRegistries;
+    }
+
     /**
      * Returns the game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). Native
      * hooks fire typed game events (tick/render/world) through it onto the
@@ -1422,6 +1437,8 @@ public final class AprismRuntime {
             gameEventDispatcher.reset();
             gameEventDispatcher = null;
         }
+        // v26.3-Alpha.2: clear the typed game-content registries.
+        gameRegistries.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();

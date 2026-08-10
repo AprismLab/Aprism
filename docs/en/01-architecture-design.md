@@ -603,3 +603,27 @@ foundation in `com.aprism.api.gameevent` + `com.aprism.loader.gameevent`:
 The actual in-game hooks (tick/render/world transitions) are installed via
 the low-level method-hook API (v26.1-Alpha.8, goal #2) by platform code;
 this alpha ships the dispatch foundation they fire into.
+
+
+## Typed Registry Binding (v26.3-Alpha.2)
+
+The QA0 gap #2 (generic-only registry) is addressed by a typed registry
+layer in `com.aprism.api.registry` + `com.aprism.loader.registry`:
+
+- **ResourceKey** — a validated namespaced identifier (`namespace:name`);
+  segments are lowercase alphanumeric with `_`/`-`; `parse()` splits the
+  combined form and rejects malformed input.
+- **TypedRegistry<T>** — a typed content registry contract: validated
+  registration (duplicate keys and null entries rejected), key lookup,
+  registration-order key listing.
+- **Content records** — `BlockContent` (hardness, resistance, luminance
+  0-15), `ItemContent` (maxStack 1-64), `EntityContent` (factoryClass
+  required, clientTracked). Each validates its own invariants.
+- **TypedRegistryImpl / GameRegistries** — in-memory implementations and
+  the aggregate holder exposing typed `blocks()` / `items()` /
+  `entities()` registries.
+
+Runtime wiring: `AprismRuntime.getGameRegistries()`; cleared on shutdown.
+The native game binding (projecting registered content into real Minecraft
+registries) is delegated to the platform adapter layer and is out of scope
+for the loader core.
