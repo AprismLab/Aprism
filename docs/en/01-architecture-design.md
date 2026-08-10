@@ -580,3 +580,26 @@ To make the log tail actionable, the runtime mirrors key lifecycle events
 (initialize, performLoad start/complete) into the structured facility. All
 report reads are defensive: during a crash the runtime may be only partially
 initialized, and the report writer never itself throws.
+
+
+## Game-Event Dispatch (v26.3-Alpha.1)
+
+The QA0 gap #1 (no game-event dispatch) is addressed by a game-event
+foundation in `com.aprism.api.gameevent` + `com.aprism.loader.gameevent`:
+
+- **Typed game events** extending the sealed `AprismEvent.GameEvent`
+  extension point: `GameTickEvent` (START/END stages; START cancellable),
+  `ClientRenderEvent` (partial tick + frame counter, cancellable),
+  `WorldLoadEvent` / `WorldUnloadEvent` (world id).
+- **GameEventDispatcher** — the runtime-side seam the native injector fires
+  into. Translates hook calls into typed events posted on the shared
+  `AprismEventBus`; owns tick/frame counters; fail-safe (a throwing
+  listener never propagates into the game loop). Detached by default:
+  events fired before attachment are dropped so early-boot hooks cannot
+  reach half-initialized listeners.
+- **Runtime wiring** — `AprismRuntime.getGameEventDispatcher()`; reset and
+  nulled on shutdown.
+
+The actual in-game hooks (tick/render/world transitions) are installed via
+the low-level method-hook API (v26.1-Alpha.8, goal #2) by platform code;
+this alpha ships the dispatch foundation they fire into.

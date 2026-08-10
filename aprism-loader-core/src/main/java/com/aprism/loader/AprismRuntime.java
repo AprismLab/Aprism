@@ -34,6 +34,7 @@ import com.aprism.loader.remap.VersionLineEntry;
 import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.gameevent.GameEventDispatcher;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
@@ -100,6 +101,8 @@ public final class AprismRuntime {
     private final ModListRegistry modListRegistry = new ModListRegistry();
     /** Per-mod settings registry (v26.2-Alpha.3, goal #7 part 2). */
     private final SettingsRegistry settingsRegistry = new SettingsRegistry();
+    /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
+    private GameEventDispatcher gameEventDispatcher;
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -185,6 +188,10 @@ public final class AprismRuntime {
                 : new AprismClassTransformer();
         this.classLoader = new AprismClassLoader(getClass().getClassLoader(), transformer);
         this.eventBus = new AprismEventBusImpl();
+        // v26.3-Alpha.1 game-event dispatch (QA0 gap #1): the dispatcher
+        // translates native hook calls into typed events on the shared bus.
+        // It stays detached until the runtime marks it attached.
+        this.gameEventDispatcher = new GameEventDispatcher(eventBus);
         this.registry = new SimpleRegistry();
         this.entryPointInvoker = new EntryPointInvoker(classLoader);
         this.extensionLoader = new ExtensionLoader(aprismVersion, mcEdit, mcVersion);
@@ -333,6 +340,18 @@ public final class AprismRuntime {
      *
      * @return the settings registry
      */
+    /**
+     * Returns the game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). Native
+     * hooks fire typed game events (tick/render/world) through it onto the
+     * shared event bus. Detached until explicitly attached; dropped events
+     * never reach half-initialized listeners.
+     *
+     * @return the game-event dispatcher, or null before initialize
+     */
+    public GameEventDispatcher getGameEventDispatcher() {
+        return gameEventDispatcher;
+    }
+
     public SettingsRegistry getSettings() {
         return settingsRegistry;
     }
@@ -1398,6 +1417,11 @@ public final class AprismRuntime {
         // v26.2-Alpha.3: flush dirty mod settings before dropping them.
         settingsRegistry.persistAll();
         settingsRegistry.clear();
+        // v26.3-Alpha.1: detach and reset the game-event dispatcher.
+        if (gameEventDispatcher != null) {
+            gameEventDispatcher.reset();
+            gameEventDispatcher = null;
+        }
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();
