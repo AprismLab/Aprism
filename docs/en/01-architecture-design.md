@@ -926,3 +926,30 @@ filtering, clear), capability gating (unknown/unavailable/throwing
 provider refusal, gated findSymbol+invoke), value validation (symbol,
 handle, result factories), and runtime wiring (exposure + shutdown
 clear).
+
+
+## AprismateAgent Reference (v26.4-Alpha.6) - deep API layer 4
+
+Goal: the loader-side reference implementation of the AprismateAgent named
+in the AprismJDK design (§3). This alpha ships the loader-level
+counterpart; the JDK-embedded agent that rides inside the AprismJDK image
+is an AprismJDK-line milestone.
+
+- **AprismateCapability** — one capability unit (name, available, detail).
+- **AprismateAgentDescriptor** — the answer to "which AprismJDK
+  capabilities does this runtime expose?" (present flag, runtime name,
+  capability set, hasCapability/availableCapabilityNames queries).
+- **AprismateAgent** — detects the runtime via the
+  {@code aprismate.jdk.version} system property (set by the AprismJDK
+  image; fail-safe: absence means stock) and assembles a PROVEN capability
+  set: class-redefinition and method-hooks require a live Instrumentation
+  handle reporting the support; jvm-introspection and native-bridge are
+  loader-provided on any JVM.
+- Runtime wiring: assembled in {@code initialize}, exposed via
+  {@code AprismRuntime.getAprismateDescriptor()}, cleared on shutdown
+  (descriptor is null before initialize, per the runtime reset contract).
+
+Eleven tests cover detection (stock vs AprismJDK property), capability
+assembly (null-instrumentation downgrade, always-four reporting,
+consistency), value validation, and runtime wiring (descriptor after
+initialize, null before initialize).

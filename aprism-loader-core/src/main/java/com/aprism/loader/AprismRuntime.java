@@ -50,6 +50,8 @@ import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.api.introspection.JvmInsight;
+import com.aprism.api.aprismate.AprismateAgentDescriptor;
+import com.aprism.loader.aprismate.AprismateAgent;
 import com.aprism.loader.nativebridge.NativeBridgeRegistry;
 import com.aprism.loader.introspection.JvmInsightImpl;
 import com.aprism.loader.settings.SettingsRegistry;
@@ -123,6 +125,8 @@ public final class AprismRuntime {
     private final JvmInsightImpl jvmInsight = new JvmInsightImpl();
     /** Native interop bridge registry (v26.4-Alpha.5). */
     private final NativeBridgeRegistry nativeBridgeRegistry = new NativeBridgeRegistry();
+    /** AprismateAgent reference (v26.4-Alpha.6). */
+    private AprismateAgent aprismateAgent;
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
@@ -209,6 +213,9 @@ public final class AprismRuntime {
         this.instrumentation = inst;
         // v26.1-Alpha.8 lower-level API (goal #2): runtime class redefinition.
         this.classRedefiner = inst != null ? new ClassRedefiner(inst) : null;
+        // v26.4-Alpha.6 AprismateAgent reference: detect the runtime and
+        // assemble the capability descriptor (proven, never assumed).
+        this.aprismateAgent = new AprismateAgent(inst);
         // v26.2-Alpha.1 structured logging facility (goal #6): console sink by
         // default; a file sink is attached under aprism-logs/ once the game
         // root is known (performLoad). The retained ring buffer backs crash
@@ -487,6 +494,14 @@ public final class AprismRuntime {
      */
     public NativeBridgeRegistry getNativeBridgeRegistry() {
         return nativeBridgeRegistry;
+    }
+
+    /**
+     * @return the AprismateAgent capability descriptor (v26.4-Alpha.6), or
+     *         {@code null} before {@link #initialize} has run
+     */
+    public AprismateAgentDescriptor getAprismateDescriptor() {
+        return aprismateAgent == null ? null : aprismateAgent.descriptor();
     }
 
     /**
@@ -1593,6 +1608,8 @@ public final class AprismRuntime {
         aiRegistry.clear();
         interModComms.clear();
         nativeBridgeRegistry.clear();
+        // v26.4-Alpha.6: drop the AprismateAgent descriptor.
+        aprismateAgent = null;
         if (transformer != null) {
             transformer.getClassLoadObservers().clear();
         }
