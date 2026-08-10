@@ -1,20 +1,20 @@
 # Aprism
 
 > A cross-platform, cross-edition, cross-version Minecraft mod loader and injector compatible with JE/BE.
-> Author: BlockConnect@StarsailsClover | Version: v26.2-Alpha.7 (Phase0 internal)
+> Author: BlockConnect@StarsailsClover | Version: v26.2-Alpha.8 (Phase0 internal)
 
-Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks, brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases).
+Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks through Aprism Extensions (.aep, provided by the AprismRefract sub-project), brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases). The Aprism core itself is native-only: loader support lives outside the core behind the LoaderEntrypointHandler SPI.
 
 ## Platform Coverage
 
 | Platform | JE | BE Client | BE Server (BDS) | Strategy |
 |---|---|---|---|---|
-| Windows | Native (javaagent) | P0 - Proxy DLL + MinHook + libhat | Native (direct link) | Primary target |
+| Windows | Native (javaagent) | P0 - Proxy DLL + MinHook + libhat | LeviLamina adapter | Primary target |
 | Android (root) | - | P1 - Zygisk + ShadowHook | - | Secondary |
 | Android (non-root) | - | P1 - Container + preload hijack | - | Secondary |
 | iOS/iPadOS | - | P2 - TrollStore + insert_dylib (research) | - | Research tier |
-| macOS | Native (javaagent) | N/A (no BE client) | Native (direct link) | JE + BDS only |
-| Linux | Native (javaagent) | N/A (no BE client) | Native (direct link) | JE + BDS only |
+| macOS | Native (javaagent) | N/A (no BE client) | LeviLamina adapter | JE + BDS only |
+| Linux | Native (javaagent) | N/A (no BE client) | LeviLamina adapter | JE + BDS only |
 | Consoles | - | Impossible (locked down) | - | Not supported |
 
 ## Documentation
@@ -33,6 +33,7 @@ The full Aprism Loader documentation set is available in English (canonical) and
 | 6 | Product Principle Specification | [06-principle-specification.md](docs/en/06-principle-specification.md) |
 | 7 | Mods Pack (.aje/.abe) Structure and Placement | [07-mods-pack-structure.md](docs/en/07-mods-pack-structure.md) |
 | 8 | Mod Developer Guide: Export .aje/.abe | [08-developer-guide.md](docs/en/08-developer-guide.md) |
+| 9 | Known Issues (v26.2 GA) | [09-known-issues.md](docs/en/09-known-issues.md) |
 
 ### Chinese (copy) - `docs/zh/`
 
@@ -46,6 +47,7 @@ The full Aprism Loader documentation set is available in English (canonical) and
 | 6 | 产品原理说明书 | [06-原理说明书.md](docs/zh/06-原理说明书.md) |
 | 7 | 模组包 (.aje/.abe) 分类、结构与放置位置 | [07-模组包结构.md](docs/zh/07-模组包结构.md) |
 | 8 | Mod 开发者指南：开发并导出 .aje/.abe | [08-开发者指南.md](docs/zh/08-开发者指南.md) |
+| 9 | 已知问题（v26.2 GA） | [09-已知问题.md](docs/zh/09-已知问题.md) |
 
 ## Project Tracking
 
@@ -69,10 +71,10 @@ Format: `v<Year>.<minor>[-Alpha.<n>][-<MCEdit>-<MCVer>]` (Phase is internal-only
 Download `Aprism-<version>-JE-<MCVer>.jar` from [GitHub Releases](https://github.com/NDBlockConnect/Aprism/releases) and attach it as a javaagent:
 
 ```bash
-java -javaagent:Aprism-v26.0-JE-26.2.jar=aprismVersion=v26.0;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
+java -javaagent:Aprism-v26.2-JE-26.2.jar=aprismVersion=v26.2;mcEdit=JE;mcVersion=26.2;gameRoot=<path-to-game-dir> ...
 ```
 
-Place `.aje` mods in `<game-dir>/mods/` (see [08-developer-guide.md](docs/en/08-developer-guide.md) for the mod format). Every release is SHA-256 checksummed and cosign keyless-signed; verify with `cosign verify-blob`.
+Place `.aje` mods in `<game-dir>/mods/` (see [08-developer-guide.md](docs/en/08-developer-guide.md) for the mod format). Loader-support extensions (`.aep`, e.g. Fabric-Support / NeoForge-Support from the [AprismRefract](https://github.com/NDBlockConnect/AprismRefract) releases) go in `<game-dir>/aprism-extensions/`. Every release is SHA-256 checksummed and cosign keyless-signed; verify with `cosign verify-blob`.
 
 ## Distribution
 

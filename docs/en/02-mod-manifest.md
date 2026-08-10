@@ -139,6 +139,47 @@ Each element is either a string path to a Mixin config JSON (e.g. `"mixins.clien
 }
 ```
 
+### 3.7 `custom.aprism.settings` (typed mod settings, since v26.2-Alpha.3)
+
+Mods may declare typed, user-configurable settings under
+`custom.aprism.settings`. The loader parses the declarations, seeds each
+setting with its declared default, validates user changes against the
+declared type, and persists user values as one JSON file per mod under
+`<game-root>/config/aprism-settings/<modid>.json`.
+
+Each declaration supports:
+
+| Key | Type | Description |
+|---|---|---|
+| `type` | string | One of `string`, `integer` (aliases `int`, `long`), `double` (aliases `float`, `number`), `boolean` (alias `bool`), `enum` (aliases `choice`, `select`). Unknown types degrade to `string`. |
+| `default` | any | Default value. For `integer` it is normalized to a whole number. |
+| `label` | string | Human-readable label for settings UIs. |
+| `options` | array of string | Allowed values, required to be meaningful for `enum`. |
+
+Example:
+
+```json
+"custom": {
+  "aprism": {
+    "settings": {
+      "maxDistance": { "type": "integer", "default": 32, "label": "Max render distance" },
+      "scale":       { "type": "double",  "default": 1.5, "label": "UI scale" },
+      "enabled":     { "type": "boolean", "default": true, "label": "Enable overlay" },
+      "mode":        { "type": "enum", "default": "fast", "options": ["fast", "fancy"], "label": "Render mode" }
+    }
+  }
+}
+```
+
+Behaviour notes:
+
+- Reading is defensive: malformed declarations are skipped, never fatal.
+- A persisted value that violates the declaration is ignored and the default
+  is kept (a hand-edited config file cannot break the mod).
+- Settings are available to mods at runtime via the loader's settings
+  registry; the registry is populated during the load phase and flushed on
+  shutdown.
+
 ## 4. aprism.manifest.json Schema (BE `.abe` packs)
 
 For Bedrock, the manifest is a strict superset of the native `manifest.json`. All Bedrock fields (`format_version`, `header`, `modules`, `dependencies`, `capabilities`, `metadata`, `subpacks`) are preserved verbatim so that Bedrock itself and stock tooling can still parse the pack. Aprism-specific data lives under a single `aprism` object.
