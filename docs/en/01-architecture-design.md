@@ -515,3 +515,28 @@ populating LOADED entries from every loaded mod and extension container and
 FAILED entries from the load report's failures (a `loadReport` is created
 on demand so direct `performLoad` callers also see failures). Accessor:
 `AprismRuntime.getModList()`. Cleared on `shutdown()`.
+
+## Mod Settings (v26.2-Alpha.3)
+
+Aprism ships a typed per-mod settings system (goal #7, part 2):
+
+- **Manifest schema** — mods declare settings under
+  `custom.aprism.settings` in `aprism.manifest.json`. Each declaration
+  carries `type` (string / integer / double / boolean / enum), `default`,
+  `label`, and (for enums) `options`.
+- **SettingType / SettingDeclaration / SettingsDeclarationReader**
+  (aprism-manifest) — parse declarations defensively: unknown types degrade
+  to STRING and malformed entries are skipped, so a bad settings block can
+  never break mod loading.
+- **ModSettings** (aprism-loader-core) — per-mod store seeded with declared
+  defaults; `get/set` with typed accessors (`getString`, `getLong`,
+  `getDouble`, `getBoolean`); `set` validates against the declared type and
+  enum option set, rejecting violations with a clear error.
+- **SettingsRegistry** — central registry populated during `performLoad`
+  from every loaded mod's manifest. User values persist as one JSON file
+  per mod under `<game-root>/config/aprism-settings/<modid>.json`.
+  Persistence is fail-safe: corrupted files and invalid values fall back to
+  declared defaults without aborting the boot. Dirty stores flush on
+  `shutdown()` and on explicit `persist()` calls.
+
+Accessor: `AprismRuntime.getSettings()`.

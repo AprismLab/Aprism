@@ -41,6 +41,7 @@ import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
 import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
 import com.aprism.loader.modmenu.ModListState;
@@ -104,6 +105,8 @@ public final class AprismRuntime {
     private AprismLogging logging;
     /** Native mod list registry (v26.2-Alpha.2, goal #7). */
     private final ModListRegistry modListRegistry = new ModListRegistry();
+    /** Per-mod settings registry (v26.2-Alpha.3, goal #7 part 2). */
+    private final SettingsRegistry settingsRegistry = new SettingsRegistry();
     private LoadReport loadReport;
 
     private String aprismVersion;
@@ -323,6 +326,18 @@ public final class AprismRuntime {
      */
     public ModListRegistry getModList() {
         return modListRegistry;
+    }
+
+    /**
+     * Returns the per-mod settings registry (v26.2-Alpha.3, goal #7 part 2).
+     * Populated during {@link #performLoad} from every loaded mod's manifest
+     * settings declarations; user values persist under
+     * {@code <game-root>/config/aprism-settings/}.
+     *
+     * @return the settings registry
+     */
+    public SettingsRegistry getSettings() {
+        return settingsRegistry;
     }
 
     /**
@@ -837,6 +852,15 @@ public final class AprismRuntime {
             loadBedrockMods(gameRoot);
         } else {
             loadMods(gameRoot);
+        }
+        // v26.2-Alpha.3 mod settings (goal #7 part 2): register every loaded
+        // mod's declared settings and overlay any persisted user values from
+        // <game-root>/config/aprism-settings/.
+        if (!"BE".equalsIgnoreCase(mcEdit)) {
+            settingsRegistry.bindStorage(gameRoot.resolve("config").resolve("aprism-settings"));
+            for (LoadedModContainer mod : mods.values()) {
+                settingsRegistry.register(mod.getManifest());
+            }
         }
         // v26.2-Alpha.2 native mod list (goal #7): rebuild the queryable
         // registry from the loaded containers plus the load report, so the
@@ -1478,6 +1502,9 @@ public final class AprismRuntime {
         loadedExtensions.clear();
         extensionContainers.clear();
         modListRegistry.clear();
+        // v26.2-Alpha.3: flush dirty mod settings before dropping them.
+        settingsRegistry.persistAll();
+        settingsRegistry.clear();
         loadReport = null;
         cleanupExtensionTempDir();
         cleanupModTempDir();
