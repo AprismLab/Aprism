@@ -953,3 +953,31 @@ Eleven tests cover detection (stock vs AprismJDK property), capability
 assembly (null-instrumentation downgrade, always-four reporting,
 consistency), value validation, and runtime wiring (descriptor after
 initialize, null before initialize).
+
+
+## Performance & Hardware Fusion (v26.4-Alpha.7) - deep API layer 5
+
+Goal: advisory hardware awareness as first-class, stable APIs — the
+AprismJDK design principle "advisory, never mandatory" (§5), shipped now
+as a loader-level reference with a replaceable deep probe.
+
+- **CpuFeatures** — architecture, OS name, processor count, proven
+  instruction-set tokens; {@code hasFeature} is case-insensitive.
+- **HardwareInsight** — CPU features + cache line size + NUMA node count;
+  unknown quantities carry the {@code -1} sentinel (cacheLineKnown /
+  numaKnown helpers).
+- **HardwareProbe** — the probe seam: the default probe reports only what
+  a stock JVM can prove (os.* properties, processor count, and
+  architecturally-guaranteed tokens — SSE2 on amd64/x86_64, NEON on
+  aarch64/arm64); a deeper probe (the AprismJDK native probe) may
+  register and activate to replace the insight with hardware-backed
+  values.
+- **HardwareRegistry** — default probe always active; register/activate
+  by name; a throwing probe falls back to the default insight; reset to
+  default on shutdown.
+- Runtime wiring: {@code AprismRuntime.getHardwareRegistry()}.
+
+Fourteen tests cover default-probe guarantees (proven values, unknown
+sentinels, ISA-guarantee-only tokens, case-insensitivity), registry
+activation (deep probe, duplicate rejection, unknown probe, throwing-probe
+fallback, clear reset), value validation, and runtime wiring.

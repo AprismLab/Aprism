@@ -51,6 +51,7 @@ import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.api.introspection.JvmInsight;
 import com.aprism.api.aprismate.AprismateAgentDescriptor;
+import com.aprism.loader.hardware.HardwareRegistry;
 import com.aprism.loader.aprismate.AprismateAgent;
 import com.aprism.loader.nativebridge.NativeBridgeRegistry;
 import com.aprism.loader.introspection.JvmInsightImpl;
@@ -127,6 +128,8 @@ public final class AprismRuntime {
     private final NativeBridgeRegistry nativeBridgeRegistry = new NativeBridgeRegistry();
     /** AprismateAgent reference (v26.4-Alpha.6). */
     private AprismateAgent aprismateAgent;
+    /** Performance & hardware fusion reference (v26.4-Alpha.7). */
+    private final HardwareRegistry hardwareRegistry = new HardwareRegistry();
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
@@ -502,6 +505,15 @@ public final class AprismRuntime {
      */
     public AprismateAgentDescriptor getAprismateDescriptor() {
         return aprismateAgent == null ? null : aprismateAgent.descriptor();
+    }
+
+    /**
+     * @return the hardware insight registry (performance & hardware fusion
+     *         reference, v26.4-Alpha.7): advisory CPU/cache/NUMA values
+     *         with a replaceable deep probe
+     */
+    public HardwareRegistry getHardwareRegistry() {
+        return hardwareRegistry;
     }
 
     /**
@@ -1610,6 +1622,8 @@ public final class AprismRuntime {
         nativeBridgeRegistry.clear();
         // v26.4-Alpha.6: drop the AprismateAgent descriptor.
         aprismateAgent = null;
+        // v26.4-Alpha.7: reset the hardware registry to the default probe.
+        hardwareRegistry.clear();
         if (transformer != null) {
             transformer.getClassLoadObservers().clear();
         }
