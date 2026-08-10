@@ -6,6 +6,9 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.aprism.api.lowlevel.ClassShape;
+import com.aprism.loader.lowlevel.ClassLoadObserverRegistry;
+import com.aprism.loader.lowlevel.ClassShapeAnalyzer;
 import com.aprism.loader.lowlevel.MethodHookTransformer;
 import com.aprism.loader.lowlevel.MethodHookRegistry;
 import org.objectweb.asm.ClassReader;
@@ -51,6 +54,8 @@ public final class AprismClassTransformer implements ClassFileTransformer {
 
     private final List<Transformation> transformations = new ArrayList<>();
     private final AccessWidener accessWidener = new AccessWidener();
+    /** Deep bytecode-hook API: load-time class observers (v26.4-Alpha.3). */
+    private final ClassLoadObserverRegistry classLoadObservers = new ClassLoadObserverRegistry();
 
     /**
      * Registers a precomputed transformation for a class.
@@ -59,6 +64,15 @@ public final class AprismClassTransformer implements ClassFileTransformer {
      */
     public void register(Transformation transformation) {
         transformations.add(transformation);
+    }
+
+    /**
+     * @return the load-time class observer registry (deep bytecode-hook API,
+     *         v26.4-Alpha.3). Observers are notified fail-safely at the end
+     *         of every transformation pass.
+     */
+    public ClassLoadObserverRegistry getClassLoadObservers() {
+        return classLoadObservers;
     }
 
     /**
@@ -80,7 +94,29 @@ public final class AprismClassTransformer implements ClassFileTransformer {
         bytes = applyMixins(className, bytes);
         bytes = applyAccessWideners(className, bytes);
         bytes = applyMethodHooks(className, bytes);
+        observeClass(className, bytes);
         return bytes;
+    }
+
+    /**
+     * Notifies registered load-time observers of the class shape at the end
+     * of the pipeline (v26.4-Alpha.3). Fail-safe: any parse failure or
+     * throwing observer is skipped without aborting the transform; when no
+     * observers are registered this is a no-op.
+     *
+     * @param className the slashed class name
+     * @param bytes     the final bytecode
+     */
+    private void observeClass(String className, byte[] bytes) {
+        if (classLoadObservers.registeredObservers().isEmpty()) {
+            return;
+        }
+        try {
+            ClassShape shape = ClassShapeAnalyzer.analyze(bytes);
+            classLoadObservers.notifyObservers(shape);
+        } catch (RuntimeException ignored) {
+            // Observation must never break class loading.
+        }
     }
 
     /**

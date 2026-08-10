@@ -837,3 +837,35 @@ Twenty-four tests cover scheduling (repeating/one-shot/interval/handler
 validation/unschedule), tick firing (one-shot at due tick, repeating
 interval, side independence, throwing-handler isolation), resource-reload
 window gating, duplicate rejection, fail-safe firing, and runtime wiring.
+
+
+## Deep Bytecode-Hook API (v26.4-Alpha.3) - low-level seam deepening
+
+Goal: deepen the Aprism JE native API into more low-level positions.
+This alpha adds a typed bytecode-structure layer on top of the existing
+ClassRedefiner/MethodHook seam.
+
+- **ClassShape** — a typed snapshot of a class file parsed from bytecode
+  (slashed name, superclass, interfaces, access flags, methods with
+  hook-form keys, fields); defensive records with validation.
+- **ClassShapeDiff** — the structural diff between two shapes: added /
+  removed methods and fields, superclass and interface changes, with
+  isEmpty() and isStructural() (structural = a change stock
+  Instrumentation.redefineClasses cannot perform). Supports the
+  validate-before-redefine workflow.
+- **ClassShapeAnalyzer** — the ASM-based engine: analyze(bytes) ->
+  ClassShape (fail-closed on malformed bytes), diff(old, new) ->
+  ClassShapeDiff.
+- **ClassLoadObserver / ClassLoadObserverRegistry** — read-only,
+  fail-safe load-time observers: an observer that throws is logged and
+  skipped; never aborts class loading or the game.
+- **Pipeline wiring** — AprismClassTransformer notifies observers at the
+  end of every transformation pass (zero overhead when no observers are
+  registered); AprismRuntime exposes getClassLoadObservers() and clears
+  the registry on shutdown.
+
+Twenty-one tests cover shape analysis (real classes, interfaces,
+hook-form keys, malformed-byte rejection), structural diffing (identical,
+added method, removed field, hierarchy changes), and observer behaviour
+(registration, duplicate rejection, fail-safe notification, transformer
+wiring, unchanged passthrough without observers).

@@ -57,6 +57,7 @@ import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
 import com.aprism.loader.logging.FileSink;
+import com.aprism.loader.lowlevel.ClassLoadObserverRegistry;
 import com.aprism.loader.lowlevel.ClassRedefiner;
 import com.aprism.loader.lowlevel.MethodHookRegistry;
 import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
@@ -536,6 +537,15 @@ public final class AprismRuntime {
      */
     public ClassRedefiner getClassRedefiner() {
         return classRedefiner;
+    }
+
+    /**
+     * @return the load-time class observer registry (deep bytecode-hook
+     *         API, v26.4-Alpha.3), or {@code null} if the runtime was
+     *         initialized without a class transformer
+     */
+    public ClassLoadObserverRegistry getClassLoadObservers() {
+        return transformer == null ? null : transformer.getClassLoadObservers();
     }
 
     /**
@@ -1555,6 +1565,9 @@ public final class AprismRuntime {
         // v26.3-Alpha.4: clear the AI assistant registry.
         aiRegistry.clear();
         interModComms.clear();
+        if (transformer != null) {
+            transformer.getClassLoadObservers().clear();
+        }
         commandRegistration.clear();
         keyBindingRegistry.clear();
         tickScheduler.clear();
