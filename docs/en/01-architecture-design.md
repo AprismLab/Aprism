@@ -776,3 +776,32 @@ resets the window), addressing validation, drain semantics (one-shot
 drain, send order, unknown recipient), method-key filtering (match drain +
 non-match retention, null filter), and runtime wiring (surface exposure +
 shutdown clear).
+
+
+## Command & Key-Binding Registration (v26.3-Alpha.8) - Fabric parity
+
+Goal: Fabric {@code CommandRegistrationCallback} and
+{@code KeyBindingRegistry} parity. Both surfaces follow the same
+one-shot registration-window model: the window opens when the INIT phase
+begins and freezes when the COMPLETE phase fires; registrations outside
+the window are rejected fail-closed.
+
+- **CommandSpec** — (name, description, handler); the handler is untyped
+  ({@code Object}) so the loader-level spec stays independent of any
+  command-dispatcher API; blank names and null handlers are rejected.
+- **CommandRegistration / CommandRegistrationImpl** — thread-safe
+  {@code CopyOnWriteArrayList} storage, duplicate command-name rejection,
+  registration-order preservation, window gating, freeze flag, clear on
+  shutdown.
+- **KeyBindingSpec** — (id, category, defaultKeyCode with GLFW key-code
+  convention); blank id/category rejected.
+- **KeyBindingRegistry / KeyBindingRegistryImpl** — same window model and
+  storage guarantees as commands, with duplicate-id rejection.
+- Runtime wiring: {@code invokeEntrypoints(INIT)} opens both windows,
+  {@code invokeEntrypoints(COMPLETE)} freezes them, shutdown clears them;
+  both surfaces are exposed via {@code AprismRuntime.getCommandRegistration()}
+  and {@code AprismRuntime.getKeyBindingRegistry()}.
+
+Twenty-two tests cover window gating (before/after/frozen), duplicate
+rejection, spec validation, registration order, and runtime wiring with
+shutdown clear.

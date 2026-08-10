@@ -35,9 +35,13 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.api.commands.CommandRegistration;
 import com.aprism.api.imc.InterModComms;
+import com.aprism.api.keybinding.KeyBindingRegistry;
 import com.aprism.loader.ai.AiRegistry;
+import com.aprism.loader.commands.CommandRegistrationImpl;
 import com.aprism.loader.imc.InterModCommsImpl;
+import com.aprism.loader.keybinding.KeyBindingRegistryImpl;
 import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
@@ -116,6 +120,8 @@ public final class AprismRuntime {
     /** AI assistant registry (v26.3-Alpha.4, goal #8; experimental). */
     private final AiRegistry aiRegistry = new AiRegistry();
     private final InterModCommsImpl interModComms = new InterModCommsImpl();
+    private final CommandRegistrationImpl commandRegistration = new CommandRegistrationImpl();
+    private final KeyBindingRegistryImpl keyBindingRegistry = new KeyBindingRegistryImpl();
     /** Rendering provider registry (v26.3-Alpha.5, goal #9; experimental). */
     private final RenderingRegistry renderingRegistry = new RenderingRegistry();
     private LoadReport loadReport;
@@ -381,6 +387,21 @@ public final class AprismRuntime {
      */
     public InterModComms getInterModComms() {
         return interModComms;
+    }
+
+    /**
+     * @return the command registration surface (Fabric parity,
+     *         v26.3-Alpha.8)
+     */
+    public CommandRegistration getCommandRegistration() {
+        return commandRegistration;
+    }
+
+    /**
+     * @return the key-binding registry (Fabric parity, v26.3-Alpha.8)
+     */
+    public KeyBindingRegistry getKeyBindingRegistry() {
+        return keyBindingRegistry;
     }
 
     /**
@@ -1122,6 +1143,12 @@ public final class AprismRuntime {
         ensureInitialized();
         if (phase == AprismPhase.INIT) {
             interModComms.markInitPhaseReached();
+            commandRegistration.openWindow();
+            keyBindingRegistry.openWindow();
+        }
+        if (phase == AprismPhase.COMPLETE) {
+            commandRegistration.freezeWindow();
+            keyBindingRegistry.freezeWindow();
         }
         String entrypointKey = entrypointKeyFor(phase);
         if (entrypointKey == null) {
@@ -1505,6 +1532,8 @@ public final class AprismRuntime {
         // v26.3-Alpha.4: clear the AI assistant registry.
         aiRegistry.clear();
         interModComms.clear();
+        commandRegistration.clear();
+        keyBindingRegistry.clear();
         // v26.3-Alpha.5: clear the rendering provider registry.
         renderingRegistry.clear();
         loadReport = null;
