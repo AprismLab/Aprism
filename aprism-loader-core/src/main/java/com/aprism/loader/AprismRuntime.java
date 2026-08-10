@@ -49,6 +49,8 @@ import com.aprism.loader.scheduler.TickSchedulerImpl;
 import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
+import com.aprism.api.introspection.JvmInsight;
+import com.aprism.loader.introspection.JvmInsightImpl;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
@@ -116,6 +118,8 @@ public final class AprismRuntime {
     private final ModListRegistry modListRegistry = new ModListRegistry();
     /** Per-mod settings registry (v26.2-Alpha.3, goal #7 part 2). */
     private final SettingsRegistry settingsRegistry = new SettingsRegistry();
+    /** JVM introspection API (v26.4-Alpha.4). */
+    private final JvmInsightImpl jvmInsight = new JvmInsightImpl();
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
@@ -463,6 +467,14 @@ public final class AprismRuntime {
 
     public SettingsRegistry getSettings() {
         return settingsRegistry;
+    }
+
+    /**
+     * @return the JVM introspection surface (v26.4-Alpha.4): threads,
+     *         class stats, heap, GC, JIT and VM identity
+     */
+    public JvmInsight getJvmInsight() {
+        return jvmInsight;
     }
 
     /**

@@ -869,3 +869,27 @@ hook-form keys, malformed-byte rejection), structural diffing (identical,
 added method, removed field, hierarchy changes), and observer behaviour
 (registration, duplicate rejection, fail-safe notification, transformer
 wiring, unchanged passthrough without observers).
+
+
+## JVM Introspection (v26.4-Alpha.4) - deep API layer 2
+
+Goal: a typed, stable view over JVM runtime state, laying the foundation
+for the AprismateAgent performance work (v26.4-Alpha.6).
+
+- **API records** — {@code ThreadInsight} (id, name, state, stack depth,
+  bounded top frames), {@code ClassStats} (loaded/unloaded/total),
+  {@code HeapSummary} (heap used/committed/max + non-heap used),
+  {@code GcSummary} (collector name, count, time), {@code
+  CompilationSummary} (JIT name, total compile time, availability).
+- **JvmInsight** facade — threads(), classStats(), heap(), gcCollectors(),
+  compilation(), uptimeMs(), vmName(), vmVendor(), javaVersion().
+- **JvmInsightImpl** — reads through the standard {@code ManagementFactory}
+  MXBeans so it works on any compliant JVM (including AprismJDK, where
+  deeper seams may replace individual methods later without changing the
+  contract); stack capture is bounded at 16 frames per thread.
+- Runtime wiring: {@code AprismRuntime.getJvmInsight()} returns the shared
+  instance (stateless, no shutdown cleanup needed).
+
+Nine tests cover live thread listing (including the current thread),
+frame bounding, class-stats sanity, heap sanity, GC collector naming,
+JIT state contract, VM identity, and runtime wiring stability.
