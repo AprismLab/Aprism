@@ -1,7 +1,7 @@
 # Aprism
 
 > A cross-platform, cross-edition, cross-version Minecraft mod loader and injector compatible with JE/BE.
-> Author: BlockConnect@StarsailsClover | Version: v26.4-Alpha.4 (Phase0 internal)
+> Author: BlockConnect@StarsailsClover | Version: v26.4-Alpha.5 (Phase0 internal)
 
 Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks through Aprism Extensions (.aep, provided by the AprismRefract sub-project), brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases). The Aprism core itself is native-only: loader support lives outside the core behind the LoaderEntrypointHandler SPI.
 

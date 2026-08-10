@@ -30,6 +30,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
     private final BiConsumer<String, String> loaderSupportRegistrar;
     private final Consumer<Object> aiAssistantRegistrar;
     private final Consumer<Object> renderingProviderRegistrar;
+    private final Consumer<Object> nativeBridgeProviderRegistrar;
 
     /**
      * @param extension            the owning extension container
@@ -80,6 +81,29 @@ public final class ExtensionContextImpl implements ExtensionContext {
             AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar,
             Consumer<Object> aiAssistantRegistrar,
             Consumer<Object> renderingProviderRegistrar) {
+        this(extension, eventBus, registry, loaderSupportRegistrar, aiAssistantRegistrar,
+                renderingProviderRegistrar, provider -> {
+                    throw new UnsupportedOperationException(
+                            "native bridge provider registration is not supported in this context");
+                });
+    }
+
+    /**
+     * @param extension                    the owning extension container
+     * @param eventBus                     the shared event bus
+     * @param registry                     the shared registry
+     * @param loaderSupportRegistrar       callback to register a loader-support folder
+     * @param aiAssistantRegistrar         callback to register an AI assistant
+     * @param renderingProviderRegistrar   callback to register a rendering
+     *                                     provider
+     * @param nativeBridgeProviderRegistrar callback to register a native
+     *                                     interop provider (v26.4-Alpha.5)
+     */
+    public ExtensionContextImpl(ExtensionContainer extension, AprismEventBus eventBus,
+            AprismRegistry registry, BiConsumer<String, String> loaderSupportRegistrar,
+            Consumer<Object> aiAssistantRegistrar,
+            Consumer<Object> renderingProviderRegistrar,
+            Consumer<Object> nativeBridgeProviderRegistrar) {
         this.extension = extension;
         this.eventBus = eventBus;
         this.registry = registry;
@@ -87,6 +111,7 @@ public final class ExtensionContextImpl implements ExtensionContext {
         this.loaderSupportRegistrar = loaderSupportRegistrar;
         this.aiAssistantRegistrar = aiAssistantRegistrar;
         this.renderingProviderRegistrar = renderingProviderRegistrar;
+        this.nativeBridgeProviderRegistrar = nativeBridgeProviderRegistrar;
     }
 
     @Override
@@ -144,6 +169,19 @@ public final class ExtensionContextImpl implements ExtensionContext {
                             + assistant.getClass().getName());
         }
         aiAssistantRegistrar.accept(assistant);
+    }
+
+    @Override
+    public void registerNativeBridgeProvider(Object provider) {
+        if (provider == null) {
+            throw new IllegalArgumentException("provider must not be null");
+        }
+        if (!(provider instanceof com.aprism.api.nativebridge.NativeBridgeProvider)) {
+            throw new IllegalArgumentException(
+                    "provider must implement NativeBridgeProvider, got "
+                            + provider.getClass().getName());
+        }
+        nativeBridgeProviderRegistrar.accept(provider);
     }
 
     @Override

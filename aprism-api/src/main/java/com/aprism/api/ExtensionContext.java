@@ -93,4 +93,15 @@ public interface ExtensionContext {
      *                 {@code null}
      */
     void registerRenderingProvider(Object provider);
+
+    /**
+     * Registers a native interop provider (v26.4-Alpha.5). The object must
+     * implement {@link com.aprism.api.nativebridge.NativeBridgeProvider};
+     * the Object parameter keeps this module free of a circular dependency.
+     *
+     * @param provider the native interop provider
+     * @throws IllegalArgumentException if the provider is null or does not
+     *                                  implement the provider contract
+     */
+    void registerNativeBridgeProvider(Object provider);
 }

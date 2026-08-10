@@ -50,6 +50,7 @@ import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.api.introspection.JvmInsight;
+import com.aprism.loader.nativebridge.NativeBridgeRegistry;
 import com.aprism.loader.introspection.JvmInsightImpl;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
@@ -120,6 +121,8 @@ public final class AprismRuntime {
     private final SettingsRegistry settingsRegistry = new SettingsRegistry();
     /** JVM introspection API (v26.4-Alpha.4). */
     private final JvmInsightImpl jvmInsight = new JvmInsightImpl();
+    /** Native interop bridge registry (v26.4-Alpha.5). */
+    private final NativeBridgeRegistry nativeBridgeRegistry = new NativeBridgeRegistry();
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
@@ -478,6 +481,15 @@ public final class AprismRuntime {
     }
 
     /**
+     * @return the native interop bridge registry (v26.4-Alpha.5): the seam
+     *         through which FFM-backed native providers (on AprismJDK)
+     *         register themselves
+     */
+    public NativeBridgeRegistry getNativeBridgeRegistry() {
+        return nativeBridgeRegistry;
+    }
+
+    /**
      * Rebuilds the mod list registry from the current runtime state
      * (v26.2-Alpha.2, goal #7). Every loaded extension and mod contributes a
      * LOADED entry; every failed unit recorded in the load report contributes
@@ -689,7 +701,8 @@ public final class AprismRuntime {
                             container, eventBus, registry,
                             (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
                             assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
-                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider),
+                            provider -> nativeBridgeRegistry.register((com.aprism.api.nativebridge.NativeBridgeProvider) provider));
                     extension.onPostInitialize(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -786,7 +799,8 @@ public final class AprismRuntime {
                         container, eventBus, registry,
                         (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
                         assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
-                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider),
+                            provider -> nativeBridgeRegistry.register((com.aprism.api.nativebridge.NativeBridgeProvider) provider));
                 extension.onInitialize(context);
             } else {
                 LOG.warning("Extension entrypoint " + m.entrypoint()
@@ -1522,7 +1536,8 @@ public final class AprismRuntime {
                             container, eventBus, registry,
                             (loaderKey, folder) -> extensionLoader.addLoaderFolder(loaderKey, folder),
                             assistant -> aiRegistry.register((com.aprism.api.ai.AiAssistant) assistant),
-                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider));
+                            provider -> renderingRegistry.register((com.aprism.api.rendering.RenderingProvider) provider),
+                            provider -> nativeBridgeRegistry.register((com.aprism.api.nativebridge.NativeBridgeProvider) provider));
                     extension.onShutdown(context);
                 } catch (RuntimeException e) {
                     LOG.warning("Extension " + container.getExtensionId()
@@ -1577,6 +1592,7 @@ public final class AprismRuntime {
         // v26.3-Alpha.4: clear the AI assistant registry.
         aiRegistry.clear();
         interModComms.clear();
+        nativeBridgeRegistry.clear();
         if (transformer != null) {
             transformer.getClassLoadObservers().clear();
         }

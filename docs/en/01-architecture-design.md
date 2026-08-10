@@ -893,3 +893,36 @@ for the AprismateAgent performance work (v26.4-Alpha.6).
 Nine tests cover live thread listing (including the current thread),
 frame bounding, class-stats sanity, heap sanity, GC collector naming,
 JIT state contract, VM identity, and runtime wiring stability.
+
+
+## Native Interop Bridge (v26.4-Alpha.5) - deep API layer 3
+
+Goal: the loader-level seam for native interop, standardizing on the
+Foreign Function &amp; Memory model named in the AprismJDK design (§6
+cross-language transition). Because FFM is not a stable API on the Java
+21 build baseline, this alpha ships the **contract and the
+capability-gated registry**; the FFM-backed backend registers through
+this seam on AprismJDK (JDK 22+). On stock JVMs without a backend, every
+operation is refused fail-closed — nothing throws into the game.
+
+- **API types** — {@code NativeSymbol} (library, name, FUNCTION/DATA
+  kind), {@code NativeLibraryHandle} (identity + lifecycle state),
+  {@code NativeResult} (success/refused with reason, never throws).
+- **NativeBridgeProvider** — the provider contract: loadLibrary /
+  unloadLibrary / findSymbol / invoke / loadedLibraries, covering the
+  three responsibilities named in the AprismJDK design: library
+  lifecycle, invocation, and memory/symbol resolution.
+- **NativeBridgeRegistry** — capability-gated provider registry
+  (AiRegistry pattern): duplicate-name rejection, availability filtering
+  (getAvailableProviderNames / hasAvailableProvider), refusal semantics
+  for unknown/unavailable/throwing providers.
+- Runtime wiring: {@code AprismRuntime.getNativeBridgeRegistry()},
+  cleared on shutdown; {@code ExtensionContext.
+  registerNativeBridgeProvider(Object)} lets a native-extension .aep
+  register its backend (validated against the provider contract).
+
+Fifteen tests cover registration (duplicate rejection, availability
+filtering, clear), capability gating (unknown/unavailable/throwing
+provider refusal, gated findSymbol+invoke), value validation (symbol,
+handle, result factories), and runtime wiring (exposure + shutdown
+clear).
