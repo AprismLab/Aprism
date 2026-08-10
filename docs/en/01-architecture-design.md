@@ -724,3 +724,26 @@ alternatives rather than upstream targets.
 
 No production guarantee is attached to this surface; it is a reference for
 the future native rendering library support line.
+
+
+## Event-Bus Priority (v26.3-Alpha.6) - Forge/NeoForge parity
+
+Goal: Forge EventPriority parity. The Aprism event bus now dispatches
+listeners in priority order while keeping cancellation semantics.
+
+- **EventPriority** — HIGHEST / HIGH / NORMAL / LOW / LOWEST, matching the
+  Forge/NeoForge dispatch tiers; {@code dispatchesBefore(other)} helper.
+- **AprismEventBus.register(type, listener, priority)** — new default-method
+  overload; the two-arg form remains and delegates at NORMAL priority, so
+  pre-existing implementations keep compiling unchanged.
+- **AprismEventBusImpl** — stores listeners per event type as
+  (priority, listener) pairs in registration order within a tier; inserts
+  new listeners at the priority-sorted position; dispatch walks the sorted
+  bucket and short-circuits on a cancelled event, so a HIGHEST cancel skips
+  all lower tiers.
+- Null priority falls back to NORMAL; unregister removes a listener at any
+  priority.
+
+Nine tests cover ordering, same-tier registration order, default/null
+priority fallback, late high-priority registration, cancellation
+short-circuit across tiers, and priority-independent unregistration.

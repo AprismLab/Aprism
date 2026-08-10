@@ -23,7 +23,28 @@ public interface AprismEventBus {
     <E extends AprismEvent> void register(Class<E> eventType, AprismEventListener<E> listener);
 
     /**
-     * Unregisters a previously registered listener.
+     * Registers a listener for a specific event type at an explicit dispatch
+     * priority (Forge/NeoForge parity, v26.3-Alpha.6). Listeners are invoked
+     * from {@link EventPriority#HIGHEST} to {@link EventPriority#LOWEST};
+     * listeners sharing a priority run in registration order.
+     *
+     * <p>The default implementation delegates to
+     * {@link #register(Class, AprismEventListener)} so implementations that
+     * pre-date priorities keep compiling and behave as NORMAL-priority.
+     *
+     * @param eventType the event class
+     * @param listener the listener to register
+     * @param priority the dispatch priority
+     * @param <E> the event type
+     */
+    default <E extends AprismEvent> void register(
+            Class<E> eventType, AprismEventListener<E> listener, EventPriority priority) {
+        register(eventType, listener);
+    }
+
+    /**
+     * Unregisters a previously registered listener, regardless of the
+     * priority it was registered at.
      *
      * @param eventType the event class
      * @param listener the listener to unregister
