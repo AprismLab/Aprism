@@ -17,9 +17,10 @@ import org.junit.jupiter.api.io.TempDir;
 import com.aprism.loader.testmods.NeoForgeRecordingMod;
 
 /**
- * Alpha 7 startup performance baseline. Measures the wall-clock time of a
- * full mixed-instance boot ({@code performLoad} over an Aprism-native mod, a
- * Fabric mod, and a NeoForge mod) and records it as the Alpha 7 baseline.
+ * Startup performance baseline (refreshed for v26.2-Alpha.7). Measures the
+ * wall-clock time of a full mixed-instance boot ({@code performLoad} over an
+ * Aprism-native mod, a Fabric mod, and a NeoForge mod) and records it as the
+ * v26.2 baseline.
  *
  * <p>This is a <em>measurement</em>, not a regression gate: it logs the
  * duration and asserts only a generous upper bound (the boot must complete far
@@ -70,7 +71,7 @@ class StartupPerformanceBaselineTest {
         assertThat(runtime.getMods()).hasSize(3);
 
         // Record the baseline in the build output for cross-Alpha comparison.
-        System.out.println("[PERF] Alpha.7 mixed-instance performLoad baseline: "
+        System.out.println("[PERF] v26.2-Alpha.7 mixed-instance performLoad baseline: "
                 + elapsedMs + " ms (3 mods: aprism + fabric + neoforge)");
 
         // Generous gate: a mixed boot must not exceed 10 seconds. Anything
