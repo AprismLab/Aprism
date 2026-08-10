@@ -1,20 +1,21 @@
-# Aprism Loader v26.2 — Known Issues
+# Aprism Loader v26.3 — Known Issues
 
-> Companion to the v26.2 official release. Maintained by
+> Companion to the v26.3 official release. Maintained by
 > BlockConnect@StarsailsClover. Items are ordered by theme, not severity;
-> they ship knowingly with the v26.2 GA.
+> they ship knowingly with the v26.3 GA. Items closed during v26.3 are
+> marked [CLOSED] and kept for historical traceability.
 
 ## JE Loader Core
 
-1. **No game-event dispatch.** The `CLIENT` and `SERVER` lifecycle phases are
+1. **[CLOSED in v26.3-Alpha.1] No game-event dispatch.** The `CLIENT` and `SERVER` lifecycle phases are
    declared and dispatchable, but there is no real-game event hook yet: the
    phases fire only when the launcher explicitly supplies the distribution
    side (`side=client|server` agent argument). Hooking real game events
    (tick, render, network) is a later milestone.
-2. **Registry is generic-only.** `AprismRegistry` and the `registry/`
+2. **[CLOSED in v26.3-Alpha.2] Registry is generic-only.** `AprismRegistry` and the `registry/`
    subpackage expose a generic registry API. Typed Block/Item/Entity
    registries bound to real Minecraft game registries do not exist yet.
-3. **No networking API.** Neither JE ecosystem's packet API has an Aprism
+3. **[CLOSED in v26.3-Alpha.3] No networking API.** Neither JE ecosystem's packet API has an Aprism
    equivalent yet. Mods needing custom packets must use Mixin.
 4. **Entrypoint discovery is manifest-driven only.** There is no
    annotation-scan fallback for Forge-style `@Mod` discovery on the Aprism
@@ -32,6 +33,18 @@
 6. **Extension dependency ranges are presence-checked only.** `depends`
    between extensions validates that the referenced id/capability exists;
    SemVer range matching of dependency versions is deferred.
+
+## Loader-Ecosystem Parity (added in v26.3)
+
+14. **Parity surfaces are registration contracts.** v26.3 closed the
+    Forge/NeoForge EventPriority + InterModComms parity and the Fabric
+    command/key-binding/tick-scheduler/resource-reload parity at the
+    loader API level. The actual game-side dispatch (command-dispatcher
+    binding, input-system mapping, tick-loop driving, resource-reload
+    invocation) is supplied by the injector/native layer when it hooks the
+    real game; until then these surfaces are registration-only.
+15. **No annotation-scan entrypoint discovery** remains unchanged (see
+    item 4).
 
 ## Bedrock Edition
 
