@@ -1,8 +1,8 @@
-# Aprism Loader v26.3 — Known Issues
+# Aprism Loader v26.4 — Known Issues
 
 > Companion to the v26.3 official release. Maintained by
 > BlockConnect@StarsailsClover. Items are ordered by theme, not severity;
-> they ship knowingly with the v26.3 GA. Items closed during v26.3 are
+> they ship knowingly with the v26.4 GA. Items closed during v26.3 are
 > marked [CLOSED] and kept for historical traceability.
 
 ## JE Loader Core
@@ -33,6 +33,20 @@
 6. **Extension dependency ranges are presence-checked only.** `depends`
    between extensions validates that the referenced id/capability exists;
    SemVer range matching of dependency versions is deferred.
+
+## Deep API Line (added in v26.4)
+
+16. **Deep capabilities are contract + registry only on stock JVMs.** The
+    v26.4 deep API (bytecode hooks, JVM introspection, native interop,
+    AprismateAgent detection, hardware insight, cross-language runtime)
+    ships as proven-capability contracts. The hardware-backed and
+    FFM-backed implementations live in the AprismJDK line; on stock JVMs
+    every deep operation degrades gracefully (proven values only,
+    fail-closed refusals, never throws into the game).
+17. **AprismJDK itself is still in its own early line.** The AprismJDK
+    subproject (OpenJDK variant + AprismateAgent) tracks its own version
+    line and is not yet a downloadable JDK; Aprism runs fully on stock
+    OpenJDK in the meantime.
 
 ## Loader-Ecosystem Parity (added in v26.3)
 
