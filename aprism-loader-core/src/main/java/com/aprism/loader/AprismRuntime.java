@@ -35,7 +35,9 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.api.imc.InterModComms;
 import com.aprism.loader.ai.AiRegistry;
+import com.aprism.loader.imc.InterModCommsImpl;
 import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
@@ -113,6 +115,7 @@ public final class AprismRuntime {
     private final NetworkingRegistry networkingRegistry = new NetworkingRegistry();
     /** AI assistant registry (v26.3-Alpha.4, goal #8; experimental). */
     private final AiRegistry aiRegistry = new AiRegistry();
+    private final InterModCommsImpl interModComms = new InterModCommsImpl();
     /** Rendering provider registry (v26.3-Alpha.5, goal #9; experimental). */
     private final RenderingRegistry renderingRegistry = new RenderingRegistry();
     private LoadReport loadReport;
@@ -370,6 +373,14 @@ public final class AprismRuntime {
      */
     public AiRegistry getAiRegistry() {
         return aiRegistry;
+    }
+
+    /**
+     * @return the inter-mod communication surface (Forge/NeoForge parity,
+     *         v26.3-Alpha.7)
+     */
+    public InterModComms getInterModComms() {
+        return interModComms;
     }
 
     /**
@@ -1109,6 +1120,9 @@ public final class AprismRuntime {
      */
     public void invokeEntrypoints(AprismPhase phase) {
         ensureInitialized();
+        if (phase == AprismPhase.INIT) {
+            interModComms.markInitPhaseReached();
+        }
         String entrypointKey = entrypointKeyFor(phase);
         if (entrypointKey == null) {
             return;
@@ -1153,7 +1167,7 @@ public final class AprismRuntime {
         if (entrypoints.isEmpty()) {
             return;
         }
-        AprismContext context = new AprismContextImpl(container, eventBus, registry);
+        AprismContext context = new AprismContextImpl(container, eventBus, registry, interModComms);
         for (String className : entrypoints) {
             try {
                 Class<?> clazz = classLoader.loadClass(className);
@@ -1490,6 +1504,7 @@ public final class AprismRuntime {
         networkingRegistry.clear();
         // v26.3-Alpha.4: clear the AI assistant registry.
         aiRegistry.clear();
+        interModComms.clear();
         // v26.3-Alpha.5: clear the rendering provider registry.
         renderingRegistry.clear();
         loadReport = null;

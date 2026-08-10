@@ -30,4 +30,10 @@ public interface AprismContext {
      * @return a logger scoped to the owning mod
      */
     Logger getLogger();
+
+    /**
+     * @return the inter-mod communication surface
+     *         (Forge/NeoForge parity, v26.3-Alpha.7)
+     */
+    com.aprism.api.imc.InterModComms getInterModComms();
 }

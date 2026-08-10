@@ -747,3 +747,32 @@ listeners in priority order while keeping cancellation semantics.
 Nine tests cover ordering, same-tier registration order, default/null
 priority fallback, late high-priority registration, cancellation
 short-circuit across tiers, and priority-independent unregistration.
+
+
+## Inter-Mod Communication (v26.3-Alpha.7) - Forge/NeoForge parity
+
+Goal: Forge/NeoForge {@code InterModComms} parity. Mods exchange one-way
+messages keyed by a method string.
+
+- **ImcMessage** — immutable record (targetModId, methodKey, senderModId,
+  payload); blank addressing fields are rejected; the payload is
+  intentionally untyped ({@code Object}), matching Forge semantics where
+  sender and receiver agree on the payload contract out of band.
+- **InterModComms** — the API surface: {@code sendTo} (accepted only once
+  the INIT phase has begun; fail-closed earlier), {@code hasMessages},
+  {@code getMessages} (drains the recipient queue in send order),
+  method-key-filtered drain (non-matching messages stay buffered),
+  {@code clear}.
+- **InterModCommsImpl** — thread-safe per-target
+  {@link ConcurrentLinkedQueue} buffering; the runtime opens the send
+  window in {@code invokeEntrypoints(INIT)} and clears the window on
+  shutdown.
+- **AprismContext.getInterModComms()** — every mod receives the shared
+  surface through its lifecycle context (single {@code AprismContextImpl}
+  implementation updated; one construction site).
+
+Eleven tests cover phase gating (reject before INIT, accept after, clear
+resets the window), addressing validation, drain semantics (one-shot
+drain, send order, unknown recipient), method-key filtering (match drain +
+non-match retention, null filter), and runtime wiring (surface exposure +
+shutdown clear).
