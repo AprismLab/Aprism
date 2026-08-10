@@ -805,3 +805,35 @@ the window are rejected fail-closed.
 Twenty-two tests cover window gating (before/after/frozen), duplicate
 rejection, spec validation, registration order, and runtime wiring with
 shutdown clear.
+
+
+## Tick Scheduler & Resource Reload (v26.3-Alpha.9) - Fabric parity
+
+Goal: Fabric {@code ServerTickEvents}/{@code ClientTickEvents} and
+{@code ResourceManagerReloadListener} parity.
+
+- **TickSide** — CLIENT / SERVER distribution selector.
+- **ScheduledTask** — (side, intervalTicks, repeating, handler); interval
+  must be at least 1; the handler is untyped ({@code Object}) with
+  {@code Runnable} invocation semantics at fire time.
+- **TickScheduler / TickSchedulerImpl** — per-side task lists with
+  next-fire-tick bookkeeping; {@code schedule} (repeating) and
+  {@code scheduleOnce} (one-shot, removed after firing);
+  {@code runTick(side, tickNumber)} fires every due task fail-safely (a
+  throwing handler is logged and never aborts the remaining tasks); sides
+  are independent.
+- **ResourceReloadListener / ResourceReloadRegistry /
+  ResourceReloadRegistryImpl** — one-shot registration window (INIT opens,
+  COMPLETE freezes), duplicate rejection, fail-safe {@code fireReload()}
+  (a throwing listener is logged and never aborts the remaining listeners),
+  clear on shutdown.
+- Runtime wiring: {@code invokeEntrypoints(INIT)} opens the resource-reload
+  window, {@code invokeEntrypoints(COMPLETE)} freezes it, shutdown clears
+  both the scheduler and the registry; exposed via
+  {@code AprismRuntime.getTickScheduler()} and
+  {@code AprismRuntime.getResourceReloadRegistry()}.
+
+Twenty-four tests cover scheduling (repeating/one-shot/interval/handler
+validation/unschedule), tick firing (one-shot at due tick, repeating
+interval, side independence, throwing-handler isolation), resource-reload
+window gating, duplicate rejection, fail-safe firing, and runtime wiring.

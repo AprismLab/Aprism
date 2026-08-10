@@ -38,10 +38,14 @@ import com.aprism.loader.gameevent.GameEventDispatcher;
 import com.aprism.api.commands.CommandRegistration;
 import com.aprism.api.imc.InterModComms;
 import com.aprism.api.keybinding.KeyBindingRegistry;
+import com.aprism.api.resourcereload.ResourceReloadRegistry;
+import com.aprism.api.scheduler.TickScheduler;
 import com.aprism.loader.ai.AiRegistry;
 import com.aprism.loader.commands.CommandRegistrationImpl;
 import com.aprism.loader.imc.InterModCommsImpl;
 import com.aprism.loader.keybinding.KeyBindingRegistryImpl;
+import com.aprism.loader.resourcereload.ResourceReloadRegistryImpl;
+import com.aprism.loader.scheduler.TickSchedulerImpl;
 import com.aprism.loader.networking.NetworkingRegistry;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
@@ -122,6 +126,8 @@ public final class AprismRuntime {
     private final InterModCommsImpl interModComms = new InterModCommsImpl();
     private final CommandRegistrationImpl commandRegistration = new CommandRegistrationImpl();
     private final KeyBindingRegistryImpl keyBindingRegistry = new KeyBindingRegistryImpl();
+    private final TickSchedulerImpl tickScheduler = new TickSchedulerImpl();
+    private final ResourceReloadRegistryImpl resourceReloadRegistry = new ResourceReloadRegistryImpl();
     /** Rendering provider registry (v26.3-Alpha.5, goal #9; experimental). */
     private final RenderingRegistry renderingRegistry = new RenderingRegistry();
     private LoadReport loadReport;
@@ -402,6 +408,21 @@ public final class AprismRuntime {
      */
     public KeyBindingRegistry getKeyBindingRegistry() {
         return keyBindingRegistry;
+    }
+
+    /**
+     * @return the tick-task scheduler (Fabric parity, v26.3-Alpha.9)
+     */
+    public TickScheduler getTickScheduler() {
+        return tickScheduler;
+    }
+
+    /**
+     * @return the resource-reload listener registry (Fabric parity,
+     *         v26.3-Alpha.9)
+     */
+    public ResourceReloadRegistry getResourceReloadRegistry() {
+        return resourceReloadRegistry;
     }
 
     /**
@@ -1145,10 +1166,12 @@ public final class AprismRuntime {
             interModComms.markInitPhaseReached();
             commandRegistration.openWindow();
             keyBindingRegistry.openWindow();
+            resourceReloadRegistry.openWindow();
         }
         if (phase == AprismPhase.COMPLETE) {
             commandRegistration.freezeWindow();
             keyBindingRegistry.freezeWindow();
+            resourceReloadRegistry.freezeWindow();
         }
         String entrypointKey = entrypointKeyFor(phase);
         if (entrypointKey == null) {
@@ -1534,6 +1557,8 @@ public final class AprismRuntime {
         interModComms.clear();
         commandRegistration.clear();
         keyBindingRegistry.clear();
+        tickScheduler.clear();
+        resourceReloadRegistry.clear();
         // v26.3-Alpha.5: clear the rendering provider registry.
         renderingRegistry.clear();
         loadReport = null;
