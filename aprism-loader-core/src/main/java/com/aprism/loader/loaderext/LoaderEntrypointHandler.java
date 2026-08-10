@@ -10,7 +10,9 @@ import com.aprism.loader.LoadedModContainer;
  * entrypoints. Every other loader (Fabric, NeoForge, Forge, Quilt,
  * LiteLoader, ...) follows its own entrypoint convention. Historically the
  * bridges for those conventions lived inside {@code aprism-loader-core};
- * per FACT.md they are being extracted into the AprismRefract sub-project.
+ * since v26.2-Alpha.5 they have been fully extracted into the AprismRefract
+ * sub-project (goal #4 closed): the SPI is the ONLY foreign-loader dispatch
+ * path, and a foreign mod with no registered handler is never dispatched.
  *
  * <p>This SPI is the extraction seam. A loader-support extension registers a
  * {@code LoaderEntrypointHandler} for its loader key; when the runtime

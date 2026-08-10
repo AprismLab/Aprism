@@ -7,6 +7,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -17,24 +19,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.aprism.api.AprismPhase;
-import com.aprism.loader.testmods.FabricRecordingMod;
+import com.aprism.loader.loaderext.LoaderEntrypointHandler;
+import com.aprism.loader.loaderext.LoaderEntrypointRegistry;
 import com.aprism.loader.testmods.NeoForgeRecordingMod;
 import com.aprism.loader.testmods.RecordingMod;
 
 /**
- * Alpha 7 mixed-loader integration test. Loads all three supported loader
- * types together in a single instance: an Aprism-native mod ({@code mods/}),
- * a Fabric mod ({@code fabric-mods/} via the Fabric-Support extension), and a
- * NeoForge mod ({@code neoforge-mods/} via the NeoForge-Support extension).
+ * Mixed-loader integration test (rewritten for v26.2-Alpha.5, goal #4
+ * close). Loads all three supported loader types together in a single
+ * instance: an Aprism-native mod ({@code mods/}), a Fabric mod
+ * ({@code fabric-mods/} via the Fabric-Support extension), and a NeoForge
+ * mod ({@code neoforge-mods/} via the NeoForge-Support extension).
  *
- * <p>Verifies that:
- * <ul>
- *   <li>all three mods are discovered and loaded in one boot;</li>
- *   <li>each mod's entrypoint is invoked through its own loader convention
- *       (Aprism lifecycle / Fabric bridge / NeoForge construction);</li>
- *   <li>the shared class space and phase dispatch serve all three without
- *       conflict.</li>
- * </ul>
+ * <p>Since v26.2-Alpha.5 the core no longer carries built-in foreign-loader
+ * bridges: discovery is unchanged, but entrypoint dispatch for foreign mods
+ * is owned exclusively by the {@link LoaderEntrypointHandler} SPI (provided
+ * in production by the AprismRefract loader-support extensions). This test
+ * therefore registers recording handlers through the seam and asserts that
+ * dispatch reaches them and nothing else is attempted for foreign mods.
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -50,8 +52,7 @@ class MixedLoaderIntegrationTest {
     @BeforeEach
     void setUp() {
         RecordingMod.resetGlobal();
-        FabricRecordingMod.resetGlobal();
-        NeoForgeRecordingMod.resetGlobal();
+        RecordingEntrypointHandler.resetGlobal();
     }
 
     @AfterEach
@@ -60,7 +61,7 @@ class MixedLoaderIntegrationTest {
     }
 
     @Test
-    void allThreeLoaderTypesCoexistAndDispatch() throws Exception {
+    void allThreeLoaderTypesCoexistAndDispatchViaSpi() throws Exception {
         // Extensions: Fabric-Support + NeoForge-Support (register their folders)
         writeLoaderSupportAep(gameRoot.resolve("aprism-extensions/Fabric-Support.aep"),
                 "fabric-support", "Fa", "fabric-mods");
@@ -86,20 +87,47 @@ class MixedLoaderIntegrationTest {
                 .extracting(m -> m.getId())
                 .containsExactlyInAnyOrder("nativemod", "fabricmod", "neoforgemod");
 
-        // Dispatch the common lifecycle: each mod runs through its own convention
+        // Register SPI handlers for the foreign loader keys (this is what the
+        // AprismRefract loader-support extensions do in production).
+        LoaderEntrypointRegistry.register(new RecordingEntrypointHandler("Fa"));
+        LoaderEntrypointRegistry.register(new RecordingEntrypointHandler("N"));
+
+        // Dispatch the common lifecycle: the native mod runs the Aprism
+        // lifecycle; the foreign mods are delegated to their SPI handlers.
         runtime.invokeCommonLifecycle();
 
         // Aprism-native mod: full lifecycle recorded
         assertThat(RecordingMod.getGlobalPhases())
                 .contains("PREINIT:nativemod", "INIT:nativemod",
                         "SETUP:nativemod", "COMPLETE:nativemod");
-        // Fabric mod: INIT entrypoint invoked via the bridge
-        assertThat(FabricRecordingMod.getGlobalCalls()).contains("main");
-        // NeoForge mod: constructed during INIT
-        runtime.invokeEntrypoints(AprismPhase.INIT);
-        LoadedModContainer neoForge = findMod(runtime, "neoforgemod");
-        assertThat(neoForge).isNotNull();
-        assertThat(neoForge.getInstance()).isNotNull();
+        // Fabric mod: every common phase delegated to the Fa handler
+        assertThat(RecordingEntrypointHandler.getGlobalCalls())
+                .contains("Fa:fabricmod:PREINIT", "Fa:fabricmod:INIT",
+                        "Fa:fabricmod:SETUP", "Fa:fabricmod:COMPLETE");
+        // NeoForge mod: delegated to the N handler
+        assertThat(RecordingEntrypointHandler.getGlobalCalls())
+                .contains("N:neoforgemod:INIT");
+    }
+
+    @Test
+    void foreignModsWithoutHandlerAreNotDispatched() throws Exception {
+        // No SPI handler registered: foreign mods are discovered but receive
+        // no entrypoint dispatch (the core never guesses foreign conventions).
+        writeLoaderSupportAep(gameRoot.resolve("aprism-extensions/Fabric-Support.aep"),
+                "fabric-support", "Fa", "fabric-mods");
+        writeFabricModJar(gameRoot.resolve("fabric-mods/fabricmod.jar"), "fabricmod");
+
+        AprismRuntime runtime = AprismRuntime.instance();
+        runtime.initialize(null, "26.0.0", "JE", "26.2");
+        runtime.performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+
+        assertThat(runtime.getMods()).hasSize(1);
+        runtime.invokeCommonLifecycle();
+
+        // Nothing dispatched: no handler, no built-in bridge
+        assertThat(RecordingEntrypointHandler.getGlobalCalls()).isEmpty();
+        LoadedModContainer fabric = runtime.getMods().get(0);
+        assertThat(fabric.getInstance()).isNull();
     }
 
     @Test
@@ -127,11 +155,39 @@ class MixedLoaderIntegrationTest {
 
     // ----- fixture helpers -----
 
-    private static LoadedModContainer findMod(AprismRuntime runtime, String id) {
-        return runtime.getMods().stream()
-                .filter(m -> m.getId().equals(id))
-                .findFirst()
-                .orElse(null);
+    /**
+     * Recording {@link LoaderEntrypointHandler} standing in for an
+     * AprismRefract loader-support handler. Records every
+     * (loaderKey, modId, phase) dispatch it receives.
+     */
+    static final class RecordingEntrypointHandler implements LoaderEntrypointHandler {
+
+        private static final List<String> GLOBAL_CALLS =
+                Collections.synchronizedList(new ArrayList<>());
+
+        private final String loaderKey;
+
+        RecordingEntrypointHandler(String loaderKey) {
+            this.loaderKey = loaderKey;
+        }
+
+        static void resetGlobal() {
+            GLOBAL_CALLS.clear();
+        }
+
+        static List<String> getGlobalCalls() {
+            return List.copyOf(GLOBAL_CALLS);
+        }
+
+        @Override
+        public String loaderKey() {
+            return loaderKey;
+        }
+
+        @Override
+        public void invoke(LoadedModContainer container, AprismPhase phase) {
+            GLOBAL_CALLS.add(loaderKey + ":" + container.getId() + ":" + phase.name());
+        }
     }
 
     private static void writeLoaderSupportAep(Path aepFile, String extensionId,

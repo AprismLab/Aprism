@@ -540,3 +540,26 @@ Aprism ships a typed per-mod settings system (goal #7, part 2):
   `shutdown()` and on explicit `persist()` calls.
 
 Accessor: `AprismRuntime.getSettings()`.
+
+
+## Loader-Support Extraction Complete (v26.2-Alpha.5)
+
+Goal #4 is closed. The transitional built-in foreign-loader bridges
+(`FabricEntrypointBridge`, `ForgeEntrypointBridge`, `NeoForgeEntrypointBridge`,
+`LiteLoaderEntrypointBridge`, the Forge/NeoForge event buses), the built-in
+loader-support extensions (`com.aprism.ext.*`), and the foreign-loader shim
+types (`net.fabricmc.api.*`, `net.neoforged.*`, `net.minecraftforge.*`,
+`com.mumfrey.*`) were removed from aprism-loader-core and the production
+artifact.
+
+The core now keeps only: loader-key constants, the `LoaderEntrypointHandler`
+contract, `LoaderEntrypointRegistry`, and Aprism-native dispatch. Foreign
+mods are still discovered by the unchanged `ModDiscoverer`, but their
+entrypoint dispatch is owned exclusively by the SPI: a loader-support
+extension from the corresponding AprismRefract branch (`fabric` / `forge` /
+`neoforge` / `quilt` / `liteloader`) registers a handler for its loader key.
+A foreign mod with no registered handler is discovered but never dispatched —
+the core never guesses foreign conventions.
+
+Verification: the five cross-repo E2E tests (`Refract*AepE2ETest`) run the
+branch-built `.aep` archives against the real runtime and all pass.

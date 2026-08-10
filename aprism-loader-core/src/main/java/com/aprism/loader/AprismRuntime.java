@@ -1,6 +1,5 @@
 package com.aprism.loader;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
@@ -34,12 +33,6 @@ import com.aprism.loader.remap.TinyRemapper;
 import com.aprism.loader.remap.VersionLineEntry;
 import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
-import com.aprism.loader.bridge.FabricEntrypointBridge;
-import com.aprism.loader.bridge.ForgeEntrypointBridge;
-import com.aprism.loader.bridge.ForgeEventBus;
-import com.aprism.loader.bridge.LiteLoaderEntrypointBridge;
-import com.aprism.loader.bridge.NeoForgeEntrypointBridge;
-import com.aprism.loader.bridge.NeoForgeEventBus;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
@@ -1053,16 +1046,12 @@ public final class AprismRuntime {
                 return;
             }
         }
-        if (ModDiscoverer.NEOFORGE_KEY.equals(container.getLoaderKey())) {
-            invokeNeoForgeEntrypoint(container, phase);
-            return;
-        }
-        if (ModDiscoverer.FORGE_KEY.equals(container.getLoaderKey())) {
-            invokeForgeEntrypoint(container, phase);
-            return;
-        }
-        if (ModDiscoverer.LITELOADER_KEY.equals(container.getLoaderKey())) {
-            invokeLiteLoaderEntrypoint(container, phase);
+        // v26.2-Alpha.5 (goal #4 close): foreign-loader dispatch is SPI-only.
+        // The transitional built-in bridges were removed from aprism-loader-core;
+        // loader-support extensions from AprismRefract own dispatch for their
+        // loader keys. A foreign mod with no registered handler is discovered
+        // but never entrypoint-dispatched here.
+        if (isForeignLoaderKey(container.getLoaderKey())) {
             return;
         }
         AprismManifest manifest = container.getManifest();
@@ -1073,8 +1062,6 @@ public final class AprismRuntime {
             return;
         }
         AprismContext context = new AprismContextImpl(container, eventBus, registry);
-        boolean isFabric = ModDiscoverer.FABRIC_KEY.equals(container.getLoaderKey())
-                || ModDiscoverer.QUILT_KEY.equals(container.getLoaderKey());
         for (String className : entrypoints) {
             try {
                 Class<?> clazz = classLoader.loadClass(className);
@@ -1082,9 +1069,6 @@ public final class AprismRuntime {
                 if (instance instanceof IAprismMod mod) {
                     // Aprism-native mod: full lifecycle dispatch
                     invokePhaseMethod(mod, context, phase);
-                } else if (isFabric) {
-                    // Fabric mod: invoke the Fabric-convention entrypoint
-                    FabricEntrypointBridge.invoke(instance, phase);
                 }
                 // Retain the first instantiated instance on the container
                 if (container.getInstance() == null) {
@@ -1104,124 +1088,19 @@ public final class AprismRuntime {
     }
 
     /**
-     * NeoForge entrypoint dispatch. Unlike Fabric, NeoForge entrypoints are NOT
-     * declared in the manifest; they are classes annotated with
-     * {@code net.neoforged.fml.common.Mod}, discovered by scanning the mod jar
-     * bytecode. NeoForge initialization is construction itself: the {@code @Mod}
-     * class is instantiated with an injected mod-scoped {@code IEventBus}. After
-     * construction the mod is event-driven, so only the INIT phase constructs;
-     * all other phases are no-ops for NeoForge mods.
+     * Whether a loader key belongs to a foreign loader (Fabric, Quilt, Forge,
+     * NeoForge, or LiteLoader). Foreign dispatch is owned exclusively by the
+     * {@link LoaderEntrypointHandler} SPI since v26.2-Alpha.5 (goal #4 close).
      *
-     * @param container the NeoForge mod container
-     * @param phase     the lifecycle phase
+     * @param loaderKey the loader key
+     * @return true when the key is a foreign loader key
      */
-    private void invokeNeoForgeEntrypoint(LoadedModContainer container, AprismPhase phase) {
-        if (phase != AprismPhase.INIT) {
-            return;
-        }
-        if (container.getInstance() != null) {
-            return;
-        }
-        List<String> modClasses = NeoForgeEntrypointBridge.findModClasses(
-                container.getSourcePath(), container.getId());
-        if (modClasses.isEmpty()) {
-            LOG.warning("NeoForge mod " + container.getId()
-                    + " has no @Mod entrypoint class; skipping");
-            return;
-        }
-        try {
-            Class<?> clazz = classLoader.loadClass(modClasses.get(0));
-            Object instance = NeoForgeEntrypointBridge.construct(clazz, new NeoForgeEventBus());
-            container.setInstance(instance);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load NeoForge entrypoint for "
-                    + container.getId(), e);
-        } catch (RuntimeException e) {
-            LOG.warning("NeoForge mod " + container.getId()
-                    + " failed to construct during INIT: " + e);
-        }
-    }
-
-    /**
-     * Forge entrypoint dispatch. Forge shares NeoForge's model: entrypoints
-     * are NOT declared in the manifest; they are classes annotated with
-     * {@code net.minecraftforge.fml.common.Mod}, discovered by scanning the
-     * mod jar bytecode. Forge initialization is construction itself: the
-     * {@code @Mod} class is instantiated with an injected mod-scoped
-     * {@code IEventBus}. After construction the mod is event-driven, so only
-     * the INIT phase constructs; all other phases are no-ops for Forge mods.
-     *
-     * @param container the Forge mod container
-     * @param phase     the lifecycle phase
-     */
-    private void invokeForgeEntrypoint(LoadedModContainer container, AprismPhase phase) {
-        if (phase != AprismPhase.INIT) {
-            return;
-        }
-        if (container.getInstance() != null) {
-            return;
-        }
-        List<String> modClasses = ForgeEntrypointBridge.findModClasses(
-                container.getSourcePath(), container.getId());
-        if (modClasses.isEmpty()) {
-            LOG.warning("Forge mod " + container.getId()
-                    + " has no @Mod entrypoint class; skipping");
-            return;
-        }
-        try {
-            Class<?> clazz = classLoader.loadClass(modClasses.get(0));
-            Object instance = ForgeEntrypointBridge.construct(clazz, new ForgeEventBus());
-            container.setInstance(instance);
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load Forge entrypoint for "
-                    + container.getId(), e);
-        } catch (RuntimeException e) {
-            LOG.warning("Forge mod " + container.getId()
-                    + " failed to construct during INIT: " + e);
-        }
-    }
-
-    /**
-     * LiteLoader entrypoint dispatch. LiteLoader entrypoints are NOT declared
-     * in the manifest; the mod class implements
-     * {@code com.mumfrey.liteloader.core.LiteMod} and is discovered by
-     * scanning the {@code .litemod} archive. LiteLoader initialization is a
-     * single {@code init(File)} call made early in startup, where the
-     * {@code File} argument is the mod's config folder. Only the INIT phase
-     * constructs and invokes; all other phases are no-ops for LiteLoader mods.
-     *
-     * @param container the LiteLoader mod container
-     * @param phase     the lifecycle phase
-     */
-    private void invokeLiteLoaderEntrypoint(LoadedModContainer container, AprismPhase phase) {
-        if (phase != AprismPhase.INIT) {
-            return;
-        }
-        if (container.getInstance() != null) {
-            return;
-        }
-        List<String> modClasses = LiteLoaderEntrypointBridge.findModClasses(
-                container.getSourcePath());
-        if (modClasses.isEmpty()) {
-            LOG.warning("LiteLoader mod " + container.getId()
-                    + " has no LiteMod entrypoint class; skipping");
-            return;
-        }
-        try {
-            Class<?> clazz = classLoader.loadClass(modClasses.get(0));
-            Object instance = clazz.getDeclaredConstructor().newInstance();
-            container.setInstance(instance);
-            File configFolder = gameRoot != null
-                    ? gameRoot.resolve("config").resolve(container.getId()).toFile()
-                    : new File(container.getId());
-            LiteLoaderEntrypointBridge.invokeInit(instance, configFolder);
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException("Failed to load LiteLoader entrypoint for "
-                    + container.getId(), e);
-        } catch (RuntimeException e) {
-            LOG.warning("LiteLoader mod " + container.getId()
-                    + " failed during INIT: " + e);
-        }
+    private static boolean isForeignLoaderKey(String loaderKey) {
+        return ModDiscoverer.FABRIC_KEY.equals(loaderKey)
+                || ModDiscoverer.QUILT_KEY.equals(loaderKey)
+                || ModDiscoverer.FORGE_KEY.equals(loaderKey)
+                || ModDiscoverer.NEOFORGE_KEY.equals(loaderKey)
+                || ModDiscoverer.LITELOADER_KEY.equals(loaderKey);
     }
 
     /**
