@@ -73,3 +73,7 @@ crash-reports/
 
 # Local smoke-test logs
 logs/
+
+# AI agent session archives (local only, not distributed)
+.qwen-agent-sessions/
+.cherry_migration/
