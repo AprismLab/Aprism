@@ -43,7 +43,7 @@ public final class ModDiscoverer {
      * mods declare {@code depends.fabricloader} ranges against this value; it
      * mirrors the loader version in {@code gradle/libs.versions.toml}.
      */
-    public static final String FABRIC_LOADER_VERSION = "0.16.14";
+    public static final String FABRIC_LOADER_VERSION = "0.19.3";
 
     /** NeoForge loader key (registered by NeoForge-Support.aep). */
     public static final String NEOFORGE_KEY = "N";
