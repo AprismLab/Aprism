@@ -581,6 +581,91 @@ class AprismRuntimeTest {
             assertThat(RecordingExtension.getGlobalLog())
                     .containsExactlyInAnyOrder("INIT:provider-ext", "INIT:consumer-ext");
         }
+
+        @Test
+        void extensionWithSatisfiedVersionRangeLoads() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithVersion("base-ext", RECORDING_EXT_CLASS, "2.1.0", "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithVersion("dep-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"base-ext\":\">=2.0.0,<3.0.0\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:base-ext", "INIT:dep-ext");
+        }
+
+        @Test
+        void extensionWithVersionRangeMismatchIsIsolated() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithVersion("base-ext", RECORDING_EXT_CLASS, "1.5.0", "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithVersion("dep-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"base-ext\":\">=2.0.0\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:base-ext");
+            assertThat(AprismRuntime.instance().getExtension("dep-ext")).isNull();
+        }
+
+        @Test
+        void extensionWithCaretRangeSatisfied() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithVersion("base-ext", RECORDING_EXT_CLASS, "1.2.3", "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithVersion("dep-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"base-ext\":\"^1.0.0\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:base-ext", "INIT:dep-ext");
+        }
+
+        @Test
+        void extensionWithCaretRangeMismatchIsIsolated() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithVersion("base-ext", RECORDING_EXT_CLASS, "2.0.0", "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithVersion("dep-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"base-ext\":\"^1.0.0\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog()).containsExactly("INIT:base-ext");
+            assertThat(AprismRuntime.instance().getExtension("dep-ext")).isNull();
+        }
+
+        @Test
+        void extensionDepWithoutVersionRangeIsPresenceOnly() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Base.aep"),
+                    extensionJsonWithVersion("base-ext", RECORDING_EXT_CLASS, "1.0.0", "[]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Dep.aep"),
+                    extensionJsonWithVersion("dep-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"base-ext\":\"*\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:base-ext", "INIT:dep-ext");
+        }
+
+        @Test
+        void extensionDepOnCapabilityWithVersionRange() throws Exception {
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Provider.aep"),
+                    extensionJsonWithVersion("provider-ext", RECORDING_EXT_CLASS, "1.0.0",
+                            "[\"fa-loader\"]", "{}"));
+            writeAep(gameRoot.resolve("aprism-extensions").resolve("Consumer.aep"),
+                    extensionJsonWithVersion("consumer-ext", RECORDING_EXT_CLASS, "1.0.0", "[]",
+                            "{\"fa-loader\":\">=1.0.0,<2.0.0\"}"));
+
+            AprismRuntime.instance().loadExtensions(gameRoot.resolve("aprism-extensions"));
+
+            assertThat(RecordingExtension.getGlobalLog())
+                    .containsExactlyInAnyOrder("INIT:provider-ext", "INIT:consumer-ext");
+        }
     }
 
     @Nested
@@ -740,6 +825,7 @@ class AprismRuntimeTest {
         return """
                 {
                   "extensionId": "%s-support",
+                  "version": "1.0.0",
                   "type": "loader-support",
                   "aprismRange": "[26.0.0,27.0.0)",
                   "loaderKey": "%s",
@@ -771,6 +857,7 @@ class AprismRuntimeTest {
         return """
                 {
                   "extensionId": "%s",
+                  "version": "1.0.0",
                   "type": "%s",
                   "aprismRange": "[26.0.0,27.0.0)",
                   "loaderKey": %s,
@@ -800,6 +887,7 @@ class AprismRuntimeTest {
         return """
                 {
                   "extensionId": "%s",
+                  "version": "1.0.0",
                   "type": "%s",
                   "aprismRange": "[26.0.0,27.0.0)",
                   "loaderKey": null,
@@ -830,6 +918,7 @@ class AprismRuntimeTest {
         return """
                 {
                   "extensionId": "%s",
+                  "version": "1.0.0",
                   "type": "api-extension",
                   "aprismRange": "[26.0.0,27.0.0)",
                   "loaderKey": null,
@@ -841,6 +930,37 @@ class AprismRuntimeTest {
                   "depends": %s
                 }
                 """.formatted(extensionId, entryJson, providesJson, dependsJson);
+    }
+
+    /**
+     * Builds an extension manifest JSON with an explicit version field
+     * (v26.5-Alpha.2).
+     *
+     * @param extensionId  the extension id
+     * @param entrypoint   the entrypoint class (may be {@code null})
+     * @param version      the extension version
+     * @param providesJson the provides array as JSON text
+     * @param dependsJson  the depends object as JSON text
+     * @return the JSON content
+     */
+    private static String extensionJsonWithVersion(String extensionId, String entrypoint,
+            String version, String providesJson, String dependsJson) {
+        String entryJson = entrypoint == null ? "null" : "\"" + entrypoint + "\"";
+        return """
+                {
+                  "extensionId": "%s",
+                  "version": "%s",
+                  "type": "api-extension",
+                  "aprismRange": "[26.0.0,27.0.0)",
+                  "loaderKey": null,
+                  "loaderRange": null,
+                  "mcEdit": null,
+                  "mcVersion": null,
+                  "entrypoint": %s,
+                  "provides": %s,
+                  "depends": %s
+                }
+                """.formatted(extensionId, version, entryJson, providesJson, dependsJson);
     }
 
     /**

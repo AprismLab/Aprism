@@ -1,26 +1,26 @@
-# Aprism Loader v26.4 — Known Issues
+# Aprism Loader v26.5 — Known Issues
 
-> Companion to the v26.3 official release. Maintained by
+> Companion to the v26.5 release. Maintained by
 > BlockConnect@StarsailsClover. Items are ordered by theme, not severity;
-> they ship knowingly with the v26.4 GA. Items closed during v26.3 are
-> marked [CLOSED] and kept for historical traceability.
+> they ship knowingly with the v26.5 GA. Items closed during v26.3-v26.5
+> are marked [CLOSED] and kept for historical traceability.
 
 ## JE Loader Core
 
-1. **[CLOSED in v26.3-Alpha.1] No game-event dispatch.** The `CLIENT` and `SERVER` lifecycle phases are
-   declared and dispatchable, but there is no real-game event hook yet: the
-   phases fire only when the launcher explicitly supplies the distribution
-   side (`side=client|server` agent argument). Hooking real game events
-   (tick, render, network) is a later milestone.
+1. **[CLOSED in v26.5-Alpha.3] No game-event dispatch.** The v26.3-Alpha.1
+   game-event dispatcher was passive; v26.5-Alpha.3 added
+   `GameEventHookInstaller` that bridges MC tick/render/world methods to
+   `GameEventDispatcher` through `MethodHookRegistry`. Hook targets are
+   supplied by a platform adapter layer (the core never hardcodes MC class
+   names); without a platform adapter the dispatcher remains fail-closed.
 2. **[CLOSED in v26.3-Alpha.2] Registry is generic-only.** `AprismRegistry` and the `registry/`
    subpackage expose a generic registry API. Typed Block/Item/Entity
    registries bound to real Minecraft game registries do not exist yet.
 3. **[CLOSED in v26.3-Alpha.3] No networking API.** Neither JE ecosystem's packet API has an Aprism
    equivalent yet. Mods needing custom packets must use Mixin.
-4. **Entrypoint discovery is manifest-driven only.** There is no
-   annotation-scan fallback for Forge-style `@Mod` discovery on the Aprism
-   native path; Forge/NeoForge mods run through their loader-support
-   extensions, which scan the `@Mod` annotation themselves.
+4. **[CLOSED in v26.5-Alpha.1] Entrypoint discovery is manifest-driven only.**
+   Annotation-scan fallback added: when the manifest declares no `main`
+   entrypoints, the loader scans embedded jars for `@AprismMod` classes.
 
 ## Loader Support (goal #4, closed in v26.2-Alpha.5)
 
@@ -30,9 +30,24 @@
    are dispatched only when the extension's `LoaderEntrypointHandler` is
    registered. A foreign mod with no registered handler is discovered but
    never invoked.
-6. **Extension dependency ranges are presence-checked only.** `depends`
-   between extensions validates that the referenced id/capability exists;
-   SemVer range matching of dependency versions is deferred.
+6. **[CLOSED in v26.5-Alpha.2] Extension dependency ranges are presence-checked only.**
+   `depends` between extensions now performs full SemVer range matching
+   against the dependency extension's `version` field; presence-only
+   checking remains as the backwards-compatible fallback for manifests
+   without versions.
+
+## Game-Side Driving (v26.5 installers)
+
+18. **v26.5 installers require a platform adapter to drive the real game.**
+    The v26.5 line shipped `GameEventHookInstaller`, `CommandBindingInstaller`,
+    `KeyBindingBindingInstaller`, `TickSchedulerDriver`,
+    `ResourceReloadTrigger`, and `NetworkTransportInstaller`. Each follows
+    the same contract: the core supplies the registry/facade wiring and a
+    bridge interface (`CommandDispatcherBridge`, `InputSystemBridge`,
+    `NetworkTransport`, hook-target descriptors); an AprismRefract branch or
+    platform adapter supplies the MC-version-specific binding. Without the
+    adapter, every surface stays registration-only and fail-closed. The
+    adapters themselves ship with the respective Refract lines.
 
 ## Deep API Line (added in v26.4)
 
@@ -48,25 +63,14 @@
     line and is not yet a downloadable JDK; Aprism runs fully on stock
     OpenJDK in the meantime.
 
-## Loader-Ecosystem Parity (added in v26.3)
-
-14. **Parity surfaces are registration contracts.** v26.3 closed the
-    Forge/NeoForge EventPriority + InterModComms parity and the Fabric
-    command/key-binding/tick-scheduler/resource-reload parity at the
-    loader API level. The actual game-side dispatch (command-dispatcher
-    binding, input-system mapping, tick-loop driving, resource-reload
-    invocation) is supplied by the injector/native layer when it hooks the
-    real game; until then these surfaces are registration-only.
-15. **No annotation-scan entrypoint discovery** remains unchanged (see
-    item 4).
-
 ## Bedrock Edition
 
 7. **Java-side only so far.** The complete Java-side BE foundation shipped
    in v26.1 (version DB, injection plan, coordinator, native staging,
    version adapter). The native platform injectors (Windows proxy-DLL,
    Android Zygisk/container, iOS) are not implemented; see the BE approach
-   research report (`docs/research/bedrock-approach/`).
+   research report (`docs/research/bedrock-approach/`). BE work remains
+   suspended until the September reverse-engineering milestone.
 8. **No real-game BE smoke.** This machine has no Minecraft Bedrock
    installation, so BE behaviour is verified by unit/integration tests
    only.
@@ -88,4 +92,4 @@
 12. **Standalone download only.** Aprism is not on Microsoft Store or Apple
     App Store (both prohibit dynamic code injection in store apps).
 13. **Modrinth mirror not yet published.** GitHub Releases is the only
-    artifact channel at v26.2 GA.
+    artifact channel at v26.5 GA.

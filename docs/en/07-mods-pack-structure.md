@@ -515,6 +515,7 @@ Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep   (ZIP container)
 | Field | Required | Description |
 |---|---|---|
 | `extensionId` | yes | Unique extension identifier |
+| `version` | no | Extension version (SemVer); used for `depends` range matching (since v26.5-Alpha.2) |
 | `type` | yes | One of: `loader-support`, `api-extension`, `platform-adapter`, `converter` |
 | `aprismRange` | yes | SemVer range of compatible Aprism Loader versions |
 | `loaderRange` | conditional | Required for `loader-support`; SemVer range of the loader version supported |

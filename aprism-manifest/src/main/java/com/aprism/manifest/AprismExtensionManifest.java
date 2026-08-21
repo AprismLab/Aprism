@@ -10,6 +10,7 @@ import com.google.gson.Gson;
  * {@code .aep} (Aprism Extension) pack.
  *
  * @param extensionId   the unique extension identifier
+ * @param version       the extension version (SemVer); null when omitted
  * @param type          the extension type (loader-support, api-extension, platform-adapter, converter)
  * @param aprismRange   SemVer range of compatible Aprism Loader versions
  * @param loaderKey     loader key for loader-support type (Fa, Fo, N, L, Q); null otherwise
@@ -25,6 +26,7 @@ import com.google.gson.Gson;
  */
 public record AprismExtensionManifest(
         String extensionId,
+        String version,
         String type,
         String aprismRange,
         String loaderKey,
@@ -49,8 +51,8 @@ public record AprismExtensionManifest(
     }
 
     /**
-     * Builds a manifest with the default priority (0). Convenience for
-     * programmatic construction and tests.
+     * Builds a manifest with the default priority (0) and no version.
+     * Convenience for programmatic construction and tests.
      *
      * @param extensionId the unique extension identifier
      * @param type        the extension type
@@ -67,7 +69,7 @@ public record AprismExtensionManifest(
     public static AprismExtensionManifest of(String extensionId, String type, String aprismRange,
             String loaderKey, String loaderRange, String mcEdit, String mcVersion,
             String entrypoint, List<String> provides, Map<String, String> depends) {
-        return new AprismExtensionManifest(extensionId, type, aprismRange, loaderKey,
+        return new AprismExtensionManifest(extensionId, null, type, aprismRange, loaderKey,
                 loaderRange, mcEdit, mcVersion, entrypoint, provides, depends, 0);
     }
 }

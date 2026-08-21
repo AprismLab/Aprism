@@ -35,6 +35,7 @@ import com.aprism.loader.remap.VersionLineRegistry;
 import com.aprism.loader.bedrock.BedrockInjectionCoordinator;
 import com.aprism.loader.loaderext.LoaderEntrypointHandler;
 import com.aprism.loader.gameevent.GameEventDispatcher;
+import com.aprism.loader.gameevent.GameEventHookInstaller;
 import com.aprism.api.commands.CommandRegistration;
 import com.aprism.api.imc.InterModComms;
 import com.aprism.api.keybinding.KeyBindingRegistry;
@@ -42,11 +43,16 @@ import com.aprism.api.resourcereload.ResourceReloadRegistry;
 import com.aprism.api.scheduler.TickScheduler;
 import com.aprism.loader.ai.AiRegistry;
 import com.aprism.loader.commands.CommandRegistrationImpl;
+import com.aprism.loader.commands.CommandBindingInstaller;
 import com.aprism.loader.imc.InterModCommsImpl;
 import com.aprism.loader.keybinding.KeyBindingRegistryImpl;
+import com.aprism.loader.keybinding.KeyBindingBindingInstaller;
 import com.aprism.loader.resourcereload.ResourceReloadRegistryImpl;
+import com.aprism.loader.resourcereload.ResourceReloadTrigger;
 import com.aprism.loader.scheduler.TickSchedulerImpl;
+import com.aprism.loader.scheduler.TickSchedulerDriver;
 import com.aprism.loader.networking.NetworkingRegistry;
+import com.aprism.loader.networking.NetworkTransportInstaller;
 import com.aprism.loader.rendering.RenderingRegistry;
 import com.aprism.loader.registry.GameRegistries;
 import com.aprism.api.introspection.JvmInsight;
@@ -135,17 +141,29 @@ public final class AprismRuntime {
     private CrossLanguageRuntime crossLanguageRuntime;
     /** Game-event dispatcher (v26.3-Alpha.1, QA0 gap #1). */
     private GameEventDispatcher gameEventDispatcher;
+    /** Game-event hook installer (v26.5-Alpha.3). */
+    private GameEventHookInstaller gameEventHookInstaller;
     /** Typed game-content registries (v26.3-Alpha.2, QA0 gap #2). */
     private final GameRegistries gameRegistries = new GameRegistries();
     /** Networking registry (v26.3-Alpha.3, QA0 gap #4). */
     private final NetworkingRegistry networkingRegistry = new NetworkingRegistry();
+    /** Network transport installer (v26.5-Alpha.8). */
+    private NetworkTransportInstaller networkTransportInstaller;
     /** AI assistant registry (v26.3-Alpha.4, goal #8; experimental). */
     private final AiRegistry aiRegistry = new AiRegistry();
     private final InterModCommsImpl interModComms = new InterModCommsImpl();
     private final CommandRegistrationImpl commandRegistration = new CommandRegistrationImpl();
+    /** Command binding installer (v26.5-Alpha.4). */
+    private CommandBindingInstaller commandBindingInstaller;
     private final KeyBindingRegistryImpl keyBindingRegistry = new KeyBindingRegistryImpl();
+    /** Key-binding binding installer (v26.5-Alpha.5). */
+    private KeyBindingBindingInstaller keyBindingBindingInstaller;
     private final TickSchedulerImpl tickScheduler = new TickSchedulerImpl();
+    /** Tick scheduler driver (v26.5-Alpha.6). */
+    private TickSchedulerDriver tickSchedulerDriver;
     private final ResourceReloadRegistryImpl resourceReloadRegistry = new ResourceReloadRegistryImpl();
+    /** Resource reload trigger (v26.5-Alpha.7). */
+    private ResourceReloadTrigger resourceReloadTrigger;
     /** Rendering provider registry (v26.3-Alpha.5, goal #9; experimental). */
     private final RenderingRegistry renderingRegistry = new RenderingRegistry();
     private LoadReport loadReport;
@@ -240,6 +258,12 @@ public final class AprismRuntime {
         // translates native hook calls into typed events on the shared bus.
         // It stays detached until the runtime marks it attached.
         this.gameEventDispatcher = new GameEventDispatcher(eventBus);
+        this.gameEventHookInstaller = new GameEventHookInstaller(gameEventDispatcher);
+        this.commandBindingInstaller = new CommandBindingInstaller(commandRegistration);
+        this.keyBindingBindingInstaller = new KeyBindingBindingInstaller(keyBindingRegistry);
+        this.tickSchedulerDriver = new TickSchedulerDriver(tickScheduler, eventBus);
+        this.resourceReloadTrigger = new ResourceReloadTrigger(resourceReloadRegistry);
+        this.networkTransportInstaller = new NetworkTransportInstaller(networkingRegistry);
         this.registry = new SimpleRegistry();
         this.entryPointInvoker = new EntryPointInvoker(classLoader);
         this.extensionLoader = new ExtensionLoader(aprismVersion, mcEdit, mcVersion);
@@ -425,6 +449,18 @@ public final class AprismRuntime {
     }
 
     /**
+     * Returns the command binding installer (v26.5-Alpha.4) that bridges
+     * registered commands into the MC command dispatcher. The platform
+     * adapter layer attaches a {@code CommandDispatcherBridge} through this
+     * installer.
+     *
+     * @return the command binding installer, or null before initialize
+     */
+    public CommandBindingInstaller getCommandBindingInstaller() {
+        return commandBindingInstaller;
+    }
+
+    /**
      * @return the key-binding registry (Fabric parity, v26.3-Alpha.8)
      */
     public KeyBindingRegistry getKeyBindingRegistry() {
@@ -432,10 +468,32 @@ public final class AprismRuntime {
     }
 
     /**
+     * Returns the key-binding binding installer (v26.5-Alpha.5) that bridges
+     * registered key bindings into the MC input system. The platform adapter
+     * layer attaches an {@code InputSystemBridge} through this installer.
+     *
+     * @return the key-binding binding installer, or null before initialize
+     */
+    public KeyBindingBindingInstaller getKeyBindingBindingInstaller() {
+        return keyBindingBindingInstaller;
+    }
+
+    /**
      * @return the tick-task scheduler (Fabric parity, v26.3-Alpha.9)
      */
     public TickScheduler getTickScheduler() {
         return tickScheduler;
+    }
+
+    /**
+     * Returns the tick scheduler driver (v26.5-Alpha.6) that drives the
+     * scheduler from real game-tick events. The platform adapter layer
+     * sets the active side and attaches the driver.
+     *
+     * @return the tick scheduler driver, or null before initialize
+     */
+    public TickSchedulerDriver getTickSchedulerDriver() {
+        return tickSchedulerDriver;
     }
 
     /**
@@ -447,6 +505,16 @@ public final class AprismRuntime {
     }
 
     /**
+     * Returns the resource-reload trigger (v26.5-Alpha.7) that fires
+     * {@code fireReload()} from real MC resource-manager reload events.
+     *
+     * @return the resource-reload trigger, or null before initialize
+     */
+    public ResourceReloadTrigger getResourceReloadTrigger() {
+        return resourceReloadTrigger;
+    }
+
+    /**
      * Returns the networking registry (v26.3-Alpha.3, QA0 gap #4): packet
      * channels, listeners, and the transport seam. Sends are fail-closed
      * until a transport is attached.
@@ -455,6 +523,18 @@ public final class AprismRuntime {
      */
     public NetworkingRegistry getNetworking() {
         return networkingRegistry;
+    }
+
+    /**
+     * Returns the network transport installer (v26.5-Alpha.8) that bridges
+     * the MC network stack into the networking registry. The platform adapter
+     * layer attaches a transport and delivers inbound packets through this
+     * installer.
+     *
+     * @return the network transport installer, or null before initialize
+     */
+    public NetworkTransportInstaller getNetworkTransportInstaller() {
+        return networkTransportInstaller;
     }
 
     /**
@@ -479,6 +559,18 @@ public final class AprismRuntime {
      */
     public GameEventDispatcher getGameEventDispatcher() {
         return gameEventDispatcher;
+    }
+
+    /**
+     * Returns the game-event hook installer (v26.5-Alpha.3) that bridges
+     * Minecraft's game loop methods into the game-event dispatcher via the
+     * low-level method-hook API. The platform adapter layer uses this to
+     * register version-specific tick/render/world method targets.
+     *
+     * @return the game-event hook installer, or null before initialize
+     */
+    public GameEventHookInstaller getGameEventHookInstaller() {
+        return gameEventHookInstaller;
     }
 
     public SettingsRegistry getSettings() {
@@ -541,9 +633,11 @@ public final class AprismRuntime {
         Map<String, ModListEntry> entries = new LinkedHashMap<>();
         for (LoadedExtensionContainer ext : extensionContainers.values()) {
             var manifest = ext.getManifest();
+            String extVersion = manifest.version() != null ? manifest.version()
+                    : (manifest.loaderRange() == null ? "" : manifest.loaderRange());
             entries.put(ext.getExtensionId(), new ModListEntry(
                     ext.getExtensionId(),
-                    manifest.loaderRange() == null ? "" : manifest.loaderRange(),
+                    extVersion,
                     ext.getExtensionId(),
                     manifest.type() == null ? "" : manifest.type(),
                     "extension",
@@ -699,11 +793,13 @@ public final class AprismRuntime {
         // then instantiate. Dependencies reference ids or capabilities; a missing
         // dependency isolates that extension (logged + reported), it does not
         // abort the boot.
-        java.util.Set<String> available = new java.util.HashSet<>();
+        java.util.Map<String, String> available = new java.util.HashMap<>();
         for (ExtensionLoader.LoadedExtension ext : raw) {
-            available.add(ext.manifest().extensionId());
+            available.put(ext.manifest().extensionId(), ext.manifest().version());
             if (ext.manifest().provides() != null) {
-                available.addAll(ext.manifest().provides());
+                for (String cap : ext.manifest().provides()) {
+                    available.putIfAbsent(cap, ext.manifest().version());
+                }
             }
         }
         for (ExtensionLoader.LoadedExtension ext : raw) {
@@ -765,25 +861,62 @@ public final class AprismRuntime {
     /**
      * Whether all {@code depends} entries of an extension are satisfied by the
      * available set (every discovered extension id plus every provides
-     * capability). Version-range matching of dependency versions is deferred to
-     * a future alpha; presence is checked here. (v26.1-Alpha.9, goal #3)
+     * capability). Version-range matching uses the full Aprism/SemVer
+     * {@link VersionRange} (v26.5-Alpha.2, known-issue #6). A dependency
+     * whose version range is {@code null}, empty, or {@code *} matches any
+     * version. An unparseable range falls back to "satisfied" so that
+     * non-conforming manifests do not block the boot; the manifest
+     * validator is the authoritative gate.
      *
      * @param ext       the extension to validate
-     * @param available the set of available extension ids and capabilities
-     * @return true when every depends entry is present in available
+     * @param available the map of available extension ids to their versions
+     *                  (version may be null)
+     * @return true when every depends entry is present and its version
+     *         satisfies the declared range
      */
     private boolean extensionDependenciesSatisfied(
-            ExtensionLoader.LoadedExtension ext, java.util.Set<String> available) {
+            ExtensionLoader.LoadedExtension ext, java.util.Map<String, String> available) {
         java.util.Map<String, String> depends = ext.manifest().depends();
         if (depends == null || depends.isEmpty()) {
             return true;
         }
-        for (String depId : depends.keySet()) {
-            if (!available.contains(depId)) {
+        for (var entry : depends.entrySet()) {
+            String depId = entry.getKey();
+            String depRange = entry.getValue();
+            if (!available.containsKey(depId)) {
+                return false;
+            }
+            String depVersion = available.get(depId);
+            if (depVersion == null || depVersion.isBlank()) {
+                continue; // presence-only when no version declared
+            }
+            if (!extensionRangeSatisfied(depVersion, depRange)) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * Checks whether a concrete version satisfies a range expression, using
+     * the full Aprism/SemVer {@link VersionRange}. A {@code null}, empty, or
+     * {@code *} range matches anything. An unparseable range or version falls
+     * back to "satisfied" so that non-conforming manifests do not block the
+     * boot. (v26.5-Alpha.2)
+     *
+     * @param actual the available version
+     * @param range  the required range expression
+     * @return whether {@code actual} satisfies {@code range}
+     */
+    private boolean extensionRangeSatisfied(String actual, String range) {
+        if (range == null || range.isEmpty() || "*".equals(range.trim())) {
+            return true;
+        }
+        try {
+            return com.aprism.manifest.VersionRange.parse(range).contains(actual);
+        } catch (IllegalArgumentException e) {
+            return true; // non-conforming: do not block
+        }
     }
 
     /**
@@ -960,17 +1093,18 @@ public final class AprismRuntime {
             }
             long t0 = System.nanoTime();
             try {
+                LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
                 if (dm.format() == ModDiscoverer.ModFormat.AJE) {
                     // A .aje is a ZIP wrapper: the executable mod classes live in
                     // the embedded <modid>.jar (and optional lib/ jars). Extract
                     // them to a temp directory and add those to the classloader;
                     // a URLClassLoader cannot read classes from a nested archive.
-                    extractModJars(dm);
+                    extractModJars(dm, container);
                 } else {
                     // Plain .jar / .litemod: the archive itself is the classpath entry
                     classLoader.addModJar(dm.path());
+                    container.addExtractedJarPath(dm.path());
                 }
-                LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
                 mods.put(container.getId(), container);
                 // Register the mod's mixin configs (if any) with the Mixin environment
                 registerMixins(dm.manifest());
@@ -1003,7 +1137,7 @@ public final class AprismRuntime {
      *
      * @param dm the discovered AJE mod
      */
-    private void extractModJars(ModDiscoverer.DiscoveredMod dm) {
+    private void extractModJars(ModDiscoverer.DiscoveredMod dm, LoadedModContainer container) {
         Path modPath = dm.path();
         String modId = dm.manifest().id();
         try (FileSystem fs = FileSystems.newFileSystem(modPath, (ClassLoader) null)) {
@@ -1027,6 +1161,7 @@ public final class AprismRuntime {
                     Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
                 }
                 classLoader.addModJar(target);
+                container.addExtractedJarPath(target);
             }
         } catch (IOException e) {
             LOG.warning("Failed to extract embedded jars from " + modPath + ": " + e.getMessage());
@@ -1292,6 +1427,19 @@ public final class AprismRuntime {
         List<String> entrypoints = manifest.entrypoints() == null
                 ? List.of()
                 : manifest.entrypoints().getOrDefault(entrypointKey, List.of());
+        // v26.5-Alpha.1: annotation-scan fallback. When the manifest has no
+        // entrypoints for the "main" key, scan the mod's extracted jars for
+        // classes annotated with @AprismMod and use those as the entrypoint
+        // list. This closes QA0 gap #5 (annotation-scan entrypoint discovery).
+        if (entrypoints.isEmpty() && "main".equals(entrypointKey)) {
+            entrypoints = AnnotationScanner.scanModEntrypoints(
+                    container.getExtractedJarPaths(), container.getId());
+            if (!entrypoints.isEmpty()) {
+                LOG.fine("Annotation scan found " + entrypoints.size()
+                        + " @AprismMod entrypoint(s) for mod " + container.getId()
+                        + " (manifest has no explicit entrypoints)");
+            }
+        }
         if (entrypoints.isEmpty()) {
             return;
         }
@@ -1622,12 +1770,19 @@ public final class AprismRuntime {
         settingsRegistry.persistAll();
         settingsRegistry.clear();
         // v26.3-Alpha.1: detach and reset the game-event dispatcher.
+        // v26.5-Alpha.3: uninstall game-event method hooks first.
+        if (gameEventHookInstaller != null) {
+            gameEventHookInstaller.uninstallAll();
+            gameEventHookInstaller = null;
+        }
         if (gameEventDispatcher != null) {
             gameEventDispatcher.reset();
             gameEventDispatcher = null;
         }
         // v26.3-Alpha.2: clear the typed game-content registries.
         gameRegistries.clear();
+        // v26.5-Alpha.8: detach network transport installer.
+        networkTransportInstaller = null;
         // v26.3-Alpha.3: clear the networking registry (channels, listeners,
         // transport).
         networkingRegistry.clear();
@@ -1647,9 +1802,29 @@ public final class AprismRuntime {
         if (transformer != null) {
             transformer.getClassLoadObservers().clear();
         }
+        // v26.5-Alpha.4: unbind commands first.
+        if (commandBindingInstaller != null) {
+            commandBindingInstaller.unbindAll();
+            commandBindingInstaller = null;
+        }
         commandRegistration.clear();
+        // v26.5-Alpha.5: unbind key bindings first.
+        if (keyBindingBindingInstaller != null) {
+            keyBindingBindingInstaller.unbindAll();
+            keyBindingBindingInstaller = null;
+        }
         keyBindingRegistry.clear();
+        // v26.5-Alpha.6: detach tick scheduler driver first.
+        if (tickSchedulerDriver != null) {
+            tickSchedulerDriver.detach();
+            tickSchedulerDriver = null;
+        }
         tickScheduler.clear();
+        // v26.5-Alpha.7: uninstall resource-reload triggers first.
+        if (resourceReloadTrigger != null) {
+            resourceReloadTrigger.uninstallAll();
+            resourceReloadTrigger = null;
+        }
         resourceReloadRegistry.clear();
         // v26.3-Alpha.5: clear the rendering provider registry.
         renderingRegistry.clear();

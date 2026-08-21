@@ -1010,3 +1010,224 @@ Thirteen tests cover the ABI vocabulary (void rejected as parameter,
 return validity, arity), value validation (binding/signature), binding
 registry (register/lookup/duplicate rejection), capability-gated
 invocation (unknown binding, no-provider refusal), and runtime wiring.
+
+## Annotation-Scan Entrypoint Discovery (v26.5-Alpha.1) - QA0 gap #5 closed
+
+When a mod manifest does not declare an explicit `entrypoints` map (or
+the `main` key is absent), the loader scans the mod's extracted embedded
+jar(s) for classes annotated with `@AprismMod` and uses those as the
+`main` entrypoint. This closes the last QA0 gap: entrypoint discovery is
+no longer manifest-driven only.
+
+- **`@AprismMod`** (`com.aprism.api.AprismMod`): runtime-visible
+  annotation marking a class as an Aprism mod entrypoint. The annotated
+  class must implement `IAprismMod`. The optional `value()` specifies the
+  mod id; when present it must match the manifest `id`. When absent, any
+  `@AprismMod` class in the mod's jar is accepted.
+- **`AnnotationScanner`** (`com.aprism.loader.AnnotationScanner`): ASM-
+  based scanner that reads class files directly (no class loading) to
+  discover `@AprismMod`-annotated classes. Returns fully-qualified class
+  names in scan order.
+- **Integration**: `AprismRuntime.invokeModEntrypoint` delegates to the
+  scanner when the manifest has no `main` entrypoints. The scan result
+  becomes the entrypoint list for all lifecycle phases.
+- Mod id filtering: when `@AprismMod("mymod")` is present, the scanner
+  verifies the value matches the manifest id; mismatched annotations are
+  skipped silently.
+- Foreign loaders are unaffected: annotation scanning applies only to
+  Aprism-native mods (loader key absent or empty).
+
+Twelve tests cover: single-annotation discovery, multiple annotations,
+empty jar, mod-id filtering (match/mismatch/empty/null), multiple
+classes in one jar, and non-IAprismMod annotated classes.
+
+
+## Extension Dependency SemVer Range Matching (v26.5-Alpha.2) - known-issue #6 closed
+
+Extension `depends` entries are now validated against the full Aprism
+SemVer range syntax, not just presence-checked. When an extension
+declares `depends: { "base-ext": ">=2.0.0,<3.0.0" }`, the loader
+resolves the dependency extension's `version` field and checks it
+against the range using `VersionRange`. A dependency whose range is
+`*`, empty, or null matches any version (backwards-compatible with
+the v26.1-Alpha.9 presence-only check). An unparseable range falls
+back to "satisfied" so that non-conforming manifests do not block
+the boot.
+
+- **`AprismExtensionManifest.version`** — new optional field (SemVer
+  string); null when omitted. Gson deserializes missing JSON fields as
+  null, so existing manifests without `version` continue to work.
+- **`AprismRuntime.extensionDependenciesSatisfied`** — now accepts a
+  `Map<String, String>` (id -> version) instead of a `Set<String>`,
+  and calls `extensionRangeSatisfied` for each dependency.
+- **Capability dependencies** — when an extension depends on a
+  `provides` capability rather than a concrete id, the version of the
+  providing extension is used for range matching.
+- **Mod list** — `ModListEntry` for extensions now prefers the
+  `version` field over `loaderRange` for the version column.
+
+Seven new tests cover: satisfied range loads, mismatched range
+isolated, caret range satisfied, caret range mismatch isolated,
+wildcard range is presence-only, capability with version range, and
+backwards-compatible presence-only when dep has no version.
+
+
+## Game-Event Real Dispatch (v26.5-Alpha.3) - method hooks into MC game loop
+
+The v26.3-Alpha.1 game-event dispatcher was a passive seam: it exposed
+fire methods but had no mechanism to actually call them from inside
+the running game. This alpha adds the bridge: a
+{@code GameEventHookInstaller} that uses the v26.1-Alpha.8
+{@code MethodHookRegistry} to register on-enter hooks against
+Minecraft's tick, render, and world-load/unload methods. When the
+{@code MethodHookTransformer} injects the dispatch call and the
+hooked method runs, the callback fires the corresponding game event
+on the shared {@code AprismEventBus}.
+
+- **{@code GameEventHookInstaller}** (`com.aprism.loader.gameevent`):
+  accepts {@code HookTarget} records (slashed class name + method name
+  + JVM descriptor + event type) and registers {@code Runnable}
+  callbacks via {@code MethodHookRegistry.register}. The installer
+  does NOT hardcode Minecraft class names — the platform adapter layer
+  (which knows the running MC version's obfuscation profile) supplies
+  the correct targets, keeping the loader core version-agnostic.
+- **{@code EventType}** enum: TICK_START, TICK_END, RENDER,
+  WORLD_LOAD, WORLD_UNLOAD — maps to the corresponding
+  {@code GameEventDispatcher.fireXxx} methods.
+- **{@code HookTarget}** record: validated (className, methodName,
+  descriptor, eventType); {@code isValid()} checks non-blank fields.
+- **Runtime wiring**: created in {@code initialize()}, exposed via
+  {@code AprismRuntime.getGameEventHookInstaller()}; {@code uninstallAll()}
+  runs in {@code shutdown()} before the dispatcher resets.
+- **Fail-safe**: a throwing callback is caught by
+  {@code MethodHookRegistry.fire} and logged, never propagating into
+  the game loop. Events fired before the dispatcher is attached are
+  dropped (unchanged from v26.3-Alpha.1).
+
+Sixteen tests cover: hook registration (single, multiple, null no-op,
+immutable snapshot), hook firing (tick start/end, render, world
+load/unload), hook lifecycle (uninstall removes hooks, detached
+dispatcher drops events, multiple targets on same method fire both
+events), hook-target validation (valid, blank class, null event type),
+and constructor validation (null dispatcher throws).
+
+
+## Command Binding Installer (v26.5-Alpha.4) - MC command dispatcher binding
+
+The v26.3-Alpha.8 command registration surface is a registration-only
+contract: mods declare commands by name + description + handler, and
+the loader freezes the list at the COMPLETE phase. This alpha adds the
+bridge that takes the frozen command list and binds each command to
+the real Minecraft command dispatcher through a platform-supplied
+{@code CommandDispatcherBridge}.
+
+- **{@code CommandDispatcherBridge}** (`com.aprism.loader.commands`):
+  platform-supplied interface with {@code bind(CommandSpec)} and
+  {@code unbindAll()}. The implementation is provided by the platform
+  adapter layer (which knows the running MC version's command dispatcher
+  API, e.g. {@code com.mojang.brigadier.CommandDispatcher}). The loader
+  core never references MC command classes directly.
+- **{@code CommandBindingInstaller}**: holds the
+  {@code CommandRegistration} surface; {@code setBridge()} attaches the
+  platform bridge; {@code bindCommands()} iterates the frozen command
+  list and calls {@code bridge.bind(spec)} for each. Binding is fail-safe:
+  a throwing bind isolates only the failing command. When no bridge is
+  attached, binding is a no-op (commands are registered but never
+  dispatched).
+- **Runtime wiring**: created in {@code initialize()}, exposed via
+  {@code AprismRuntime.getCommandBindingInstaller()}; {@code unbindAll()}
+  runs in {@code shutdown()} before clearing the registration.
+
+Twelve tests cover: bridge attachment (no bridge by default, set attaches,
+null detaches), binding (no-op without bridge, all commands bound, empty
+list, failing command does not block others, idempotent rebind), unbind
+(bridge unbindAll called, no-op without bridge, throwing bridge caught),
+and constructor validation (null registration throws).
+
+
+## Key-Binding Binding Installer (v26.5-Alpha.5) - MC input system mapping
+
+The v26.3-Alpha.8 key-binding registration surface is a registration-only
+contract. This alpha adds the bridge that takes the frozen key-binding
+list and binds each entry to the real MC input system through a
+platform-supplied {@code InputSystemBridge}.
+
+- **{@code InputSystemBridge}** (`com.aprism.loader.keybinding`):
+  platform-supplied interface with {@code bind(KeyBindingSpec)} and
+  {@code unbindAll()}. The implementation is provided by the platform
+  adapter layer (which knows the running MC version's input API, e.g.
+  GLFW key callbacks or MC's {@code KeyMapping} class).
+- **{@code KeyBindingBindingInstaller}**: holds the
+  {@code KeyBindingRegistry}; {@code setBridge()} attaches the platform
+  bridge; {@code bindKeyBindings()} iterates the frozen binding list
+  and calls {@code bridge.bind(spec)} for each. Fail-safe: a throwing
+  bind isolates only the failing key binding. No bridge = no-op.
+- **Runtime wiring**: created in {@code initialize()}, exposed via
+  {@code AprismRuntime.getKeyBindingBindingInstaller()}; unbind runs
+  in {@code shutdown()}.
+
+Eleven tests cover: bridge attachment, binding (no-op, all bound, empty,
+failing isolation), unbind (called, no-op, throwing caught), constructor.
+
+
+## Tick Scheduler Driver (v26.5-Alpha.6) - MC tick loop driving
+
+The v26.3-Alpha.9 tick scheduler is a passive surface: it exposes
+{@code runTick(side, tickNumber)} but nothing calls it. This driver
+registers as a {@code GameTickEvent} listener on the shared event bus;
+when the v26.5-Alpha.3 game-event hooks fire a TICK_START, this driver
+calls {@code runTick} on the active side.
+
+- **{@code TickSchedulerDriver}** (`com.aprism.loader.scheduler`):
+  holds the {@code TickScheduler} and the {@code AprismEventBus}.
+  {@code setActiveSide(TickSide)} sets which side is active (CLIENT or
+  SERVER); {@code attach()} registers the tick-event listener;
+  {@code detach()} removes it and clears the active side. When the
+  active side is null or the driver is not attached, tick events are
+  ignored.
+- **Side isolation**: only tasks on the active side are driven. A
+  client-side tick does not fire server-side tasks and vice versa.
+- **Fail-safe**: a throwing scheduled task is caught by
+  {@code TickScheduler.runTick} (per-task isolation); the driver also
+  catches any unexpected {@code RuntimeException} from the scheduler.
+- **Runtime wiring**: created in {@code initialize()}, exposed via
+  {@code AprismRuntime.getTickSchedulerDriver()}; {@code detach()} runs
+  in {@code shutdown()} before clearing the scheduler.
+
+Fourteen tests cover: construction (null scheduler, null event bus),
+attachment (default, attach, idempotent attach, detach, idempotent
+detach), active side (default null, set, detach clears), tick driving
+(event drives scheduler, side null ignored, not attached ignored, tick
+end does not drive, multiple ticks, cross-side isolation, throwing task
+does not break driver).
+
+## User Installer + Launch Profile Generation (v26.6-Alpha.1)
+
+The user-facing installer surface (com.aprism.loader.installer) makes
+first-time Aprism setup a guided flow instead of a manual javaagent edit:
+
+- **LauncherType**: supported launchers (Prism, ATLauncher, GDLauncher,
+  Generic). Each carries its instance-config file name for detection and
+  generation.
+- **LaunchProfile**: immutable description of an Aprism installation
+  (aprismVersion, mcVersion, agentJarPath, gameRoot, extra JVM args) with
+  a javaagentArg() renderer producing the full -javaagent:...=key=value;...
+  string in the documented agent argument format.
+- **LaunchProfileGenerator**: per-launcher config generation. Prism gets
+  an instance.cfg PreLaunchCommand; ATLauncher/GDLauncher get JSON configs;
+  Generic falls back to standalone .bat/.sh launch scripts. A dependency-free
+  JSON writer keeps the loader core lean.
+- **LauncherDetector**: detects the launcher type from characteristic files
+  (instance.cfg + mmc-pack.json -> Prism; instance.json + minecraft.json ->
+  ATLauncher; config.json with modpackVersion/customJavaArgs -> GDLauncher);
+  detectFromParent() majority-votes across an instances directory.
+- **InstallationValidator**: fail-closed validation of the agent jar
+  (exists/readable/size), game root, mods/extensions directories (warnings
+  only), and version-string formats; validateAndReport() renders a readable
+  text report.
+- **FirstRunReport**: end-user report combining the profile summary,
+  validation status, next steps, launcher-specific notes, and support links.
+
+Twenty-eight tests cover profile building/validation (5), launcher
+detection single+parent (7), config/script generation per launcher (9),
+and installation validation errors/warnings/report (7).

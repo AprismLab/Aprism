@@ -1,6 +1,8 @@
 package com.aprism.loader;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import com.aprism.api.ModContainer;
@@ -23,6 +25,7 @@ public final class LoadedModContainer implements ModContainer {
     private final Path sourcePath;
     private final String loaderKey;
     private Object instance;
+    private final List<Path> extractedJarPaths = new ArrayList<>();
 
     /**
      * @param manifest   the parsed mod manifest
@@ -34,6 +37,29 @@ public final class LoadedModContainer implements ModContainer {
         this.manifest = manifest;
         this.sourcePath = sourcePath;
         this.loaderKey = loaderKey;
+    }
+
+    /**
+     * Records a jar path extracted from a .aje archive into the temp directory.
+     * Used by the annotation scanner when the manifest has no entrypoints.
+     *
+     * @param jarPath the extracted jar path
+     * @since v26.5-Alpha.1
+     */
+    public void addExtractedJarPath(Path jarPath) {
+        extractedJarPaths.add(jarPath);
+    }
+
+    /**
+     * Returns the jar paths extracted from a .aje archive into the temp
+     * directory. For plain .jar mods this list is empty (the source path
+     * itself is the classpath entry).
+     *
+     * @return the list of extracted jar paths (immutable copy)
+     * @since v26.5-Alpha.1
+     */
+    public List<Path> getExtractedJarPaths() {
+        return List.copyOf(extractedJarPaths);
     }
 
     /**
