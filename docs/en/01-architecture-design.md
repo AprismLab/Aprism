@@ -1278,3 +1278,27 @@ GitHub Releases remains the primary, verification-authoritative channel:
 Seven tests cover artifact naming (official + Alpha), null rejection,
 primary-first ordering, deterministic GitHub URLs, the Modrinth project
 page, primary-only checksums, and the stable describe() document.
+
+## Support Report (v26.6-Alpha.4)
+
+The aprism-report support bundle is the single artifact a user attaches to
+a bug report (SupportReportBuilder, com.aprism.loader.report):
+
+- Environment identity: Aprism version, MC edition/version, JVM/vendor,
+  OS/arch, cores, max heap.
+- Load outcome: the startup LoadReport summary plus per-failure detail
+  lines with actionable first-step hints mapped from common failure
+  signatures (missing dependency, circular dependency, unsatisfied version
+  range, malformed manifest, ClassNotFound, duplicate id).
+- Mutual-exclusion warning: when both aprism.agent.active and a Prismate
+  marker property are set, the report surfaces the unsupported combination
+  loudly at the top of the failure section.
+- Recent structured-log tail (last 100 records) and the mod list snapshot.
+- Fail-safe: build() never throws; write(gameRoot, ...) renders to
+  <gameRoot>/aprism-report.txt and returns null instead of throwing on IO
+  failure.
+
+Nine tests cover header/environment rendering, null-field stability, the
+no-runtime path, file writing with and without a game root, hint mapping
+(six known signatures + unknown/null), and the mutual-exclusion warning in
+both its triggered and quiet states.
