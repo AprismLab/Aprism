@@ -91,5 +91,7 @@
 
 12. **Standalone download only.** Aprism is not on Microsoft Store or Apple
     App Store (both prohibit dynamic code injection in store apps).
-13. **Modrinth mirror not yet published.** GitHub Releases is the only
-    artifact channel at v26.5 GA.
+13. **[CLOSED in v26.6-Alpha.3] Modrinth mirror not yet published.** The
+    release workflow now mirrors every signed artifact to Modrinth (gated on
+    MODRINTH_TOKEN); GitHub Releases remains the primary,
+    verification-authoritative channel.

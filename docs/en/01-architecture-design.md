@@ -1257,3 +1257,24 @@ parsing:
 Ten tests cover publish/republish/unpublish, schema identity fields,
 null-argument handling, tmp-file cleanup, unit counting from the mod list,
 duration enrichment from the load report, and null-field normalization.
+
+## Modrinth Mirror Distribution (v26.6-Alpha.3) - known-issue #13 closed
+
+Aprism artifacts are now mirrored to Modrinth for discoverability while
+GitHub Releases remains the primary, verification-authoritative channel:
+
+- **DistributionChannel** enum: github-releases (primary) and modrinth
+  (mirror), with stable machine-readable ids.
+- **DistributionResolver**: pure URL resolution - canonical artifact names
+  (Aprism-<version>-JE-<mcVer>.jar), the deterministic GitHub tag-download
+  URL, checksums.txt on the primary channel only (the mirror relies on
+  Modrinth's own sidecar hashes plus the embedded cosign bundle), and a
+  describe() map for status documents and tooling.
+- **release.yml mirror step**: after the GitHub Release is created, the same
+  signed jar is uploaded to Modrinth via the v2 API; gated on the
+  MODRINTH_TOKEN secret so forks run green without it. Version type maps to
+  beta for Alphas, release for bare officials.
+
+Seven tests cover artifact naming (official + Alpha), null rejection,
+primary-first ordering, deterministic GitHub URLs, the Modrinth project
+page, primary-only checksums, and the stable describe() document.

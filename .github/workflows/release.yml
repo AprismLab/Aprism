@@ -115,3 +115,47 @@ jobs:
           } else {
             gh release create $ver dist/* --prerelease --title $ver --notes $notes
           }
+
+      - name: Mirror to Modrinth (v26.6-Alpha.3)
+        shell: pwsh
+        # Known-issue #13 close: GitHub Releases remains the primary channel;
+        # the same signed artifact is mirrored to Modrinth for discoverability.
+        # Gated on the MODRINTH_TOKEN secret so forks run green without it.
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        if: ${{ env.MODRINTH_TOKEN != '' }}
+        run: |
+          $ver = "${{ github.ref_name }}"
+          $jar = Get-ChildItem "dist/Aprism-$ver-JE-*.jar" | Select-Object -First 1
+          if (-not $jar) { Write-Error "Agent jar not found in dist/"; exit 1 }
+          $body = @{
+            name         = $ver
+            version_type = if ($ver -match "-Alpha") { "beta" } else { "release" }
+            changelog    = (Test-Path "docs/release-notes/$ver.md") `
+                             ? (Get-Content "docs/release-notes/$ver.md" -Raw) `
+                             : "Aprism Loader $ver"
+            dependencies = @()
+            file_parts   = @()
+            primary_file = $jar.Name
+          } | ConvertTo-Json
+          # Step 1: create the version to obtain its id.
+          $headers = @{ Authorization = $env:MODRINTH_TOKEN }
+          $create = Invoke-RestMethod -Method Post `
+            -Uri "https://api.modrinth.com/v2/project/aprism/version" `
+            -Headers $headers -ContentType "application/json" -Body $body
+          # Step 2: upload the jar to the created version.
+          $boundary = [Guid]::NewGuid().ToString()
+          $fileBytes = [IO.File]::ReadAllBytes($jar.FullName)
+          $crlf = "`r`n"
+          $partStart = "--$boundary$crlf" +
+            'Content-Disposition: form-data; name="files"; filename="' + $jar.Name + '"' + $crlf +
+            "Content-Type: application/java-archive$crlf$crlf"
+          $partEnd = "$crlf--$boundary--$crlf"
+          $payload = [Text.Encoding]::UTF8.GetBytes($partStart) + $fileBytes +
+                     [Text.Encoding]::UTF8.GetBytes($partEnd)
+          Invoke-RestMethod -Method Post `
+            -Uri "https://api.modrinth.com/v2/version/$($create.id)/file" `
+            -Headers @{ Authorization = $env:MODRINTH_TOKEN } `
+            -ContentType "multipart/form-data; boundary=$boundary" `
+            -Body $payload
+          Write-Host "Mirrored $jar.Name to Modrinth version $($create.id)"
