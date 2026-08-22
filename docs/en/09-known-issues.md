@@ -1,8 +1,8 @@
-# Aprism Loader v26.5 — Known Issues
+# Aprism Loader v26.6 — Known Issues
 
-> Companion to the v26.5 release. Maintained by
+> Companion to the v26.6 release. Maintained by
 > BlockConnect@StarsailsClover. Items are ordered by theme, not severity;
-> they ship knowingly with the v26.5 GA. Items closed during v26.3-v26.5
+> they ship knowingly with the v26.6 GA. Items closed during v26.3-v26.6
 > are marked [CLOSED] and kept for historical traceability.
 
 ## JE Loader Core

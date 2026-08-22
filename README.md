@@ -1,7 +1,7 @@
-# Aprism
+﻿# Aprism
 
 > A cross-platform, cross-edition, cross-version Minecraft mod loader and injector compatible with JE/BE.
-> Author: BlockConnect@StarsailsClover | Version: v26.5 (Phase0 internal)
+> Author: BlockConnect@StarsailsClover | Version: v26.6 (Phase0 internal)
 
 Aprism Loader is a unified mod loading framework that supports JE Fabric, Forge, NeoForge, Quilt and LiteLoader modpacks through Aprism Extensions (.aep, provided by the AprismRefract sub-project), brings a Fabric-like mod loader ecosystem to Bedrock Edition (BE) via native injection, and provides rapid JE-to-BE mod conversion tooling. JE Aprism Native is a modern, JVM-based foundation that forces unified interfaces with a monotonic version contract (only increases, never decreases). The Aprism core itself is native-only: loader support lives outside the core behind the LoaderEntrypointHandler SPI.
 
@@ -39,15 +39,15 @@ The full Aprism Loader documentation set is available in English (canonical) and
 
 | # | Document | File |
 |---|---|---|
-| 1 | Aprism Loader 总体架构设计 | [01-架构设计.md](docs/zh/01-架构设计.md) |
-| 2 | Aprism JE / BE 模组清单规范 | [02-模组清单.md](docs/zh/02-模组清单.md) |
-| 3 | 启动器适配、下载安装与管理模块开发指南 | [03-启动器指南.md](docs/zh/03-启动器指南.md) |
-| 4 | 产品可行性报告 | [04-可行性报告.md](docs/zh/04-可行性报告.md) |
-| 5 | 产品技术报告与研究方法 | [05-技术报告.md](docs/zh/05-技术报告.md) |
-| 6 | 产品原理说明书 | [06-原理说明书.md](docs/zh/06-原理说明书.md) |
-| 7 | 模组包 (.aje/.abe) 分类、结构与放置位置 | [07-模组包结构.md](docs/zh/07-模组包结构.md) |
-| 8 | Mod 开发者指南：开发并导出 .aje/.abe | [08-开发者指南.md](docs/zh/08-开发者指南.md) |
-| 9 | 已知问题（v26.2 GA） | [09-已知问题.md](docs/zh/09-已知问题.md) |
+| 1 | Aprism Loader 鎬讳綋鏋舵瀯璁捐 | [01-鏋舵瀯璁捐.md](docs/zh/01-鏋舵瀯璁捐.md) |
+| 2 | Aprism JE / BE 妯＄粍娓呭崟瑙勮寖 | [02-妯＄粍娓呭崟.md](docs/zh/02-妯＄粍娓呭崟.md) |
+| 3 | 鍚姩鍣ㄩ€傞厤銆佷笅杞藉畨瑁呬笌绠＄悊妯″潡寮€鍙戞寚鍗?| [03-鍚姩鍣ㄦ寚鍗?md](docs/zh/03-鍚姩鍣ㄦ寚鍗?md) |
+| 4 | 浜у搧鍙鎬ф姤鍛?| [04-鍙鎬ф姤鍛?md](docs/zh/04-鍙鎬ф姤鍛?md) |
+| 5 | 浜у搧鎶€鏈姤鍛婁笌鐮旂┒鏂规硶 | [05-鎶€鏈姤鍛?md](docs/zh/05-鎶€鏈姤鍛?md) |
+| 6 | 浜у搧鍘熺悊璇存槑涔?| [06-鍘熺悊璇存槑涔?md](docs/zh/06-鍘熺悊璇存槑涔?md) |
+| 7 | 妯＄粍鍖?(.aje/.abe) 鍒嗙被銆佺粨鏋勪笌鏀剧疆浣嶇疆 | [07-妯＄粍鍖呯粨鏋?md](docs/zh/07-妯＄粍鍖呯粨鏋?md) |
+| 8 | Mod 寮€鍙戣€呮寚鍗楋細寮€鍙戝苟瀵煎嚭 .aje/.abe | [08-寮€鍙戣€呮寚鍗?md](docs/zh/08-寮€鍙戣€呮寚鍗?md) |
+| 9 | 宸茬煡闂锛坴26.2 GA锛?| [09-宸茬煡闂.md](docs/zh/09-宸茬煡闂.md) |
 
 ## Project Tracking
 
