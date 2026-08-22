@@ -67,7 +67,7 @@ import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
 import com.aprism.loader.modmenu.ModListState;
 import com.aprism.loader.status.StatusPublisher;
-import com.aprism.loader.contentbind.GameContentBindingInstaller;
+import com.aprism.loader.contentbind.ContentBindingRunner;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -1257,20 +1257,43 @@ public final class AprismRuntime {
         ensureInitialized();
         loadReport = new LoadReport();
         performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+        // v26.7-Alpha.2: deep foreign-loader mods (JEI-class) query vanilla
+        // registries during construction. At premain time the registries are
+        // not yet frozen, so when the bootstrap probe is available we defer
+        // every entrypoint-dispatching stage until after vanilla bootstrap.
+        // Without the probe (unit tests, embedders, non-MC hosts) behaviour
+        // is identical to previous releases: synchronous dispatch.
+        if (GameBootstrapGate.shouldDefer()) {
+            LOG.info("Vanilla bootstrap pending - deferring mod lifecycle "
+                    + "dispatch until registries are frozen");
+            GameBootstrapGate.onBootstrapped(() -> {
+                try {
+                    dispatchProductionStages(gameRoot, side);
+                } catch (DependencyResolutionException deferredFailure) {
+                    LOG.warning("Deferred lifecycle dispatch failed: " + deferredFailure);
+                }
+            });
+            return;
+        }
+        dispatchProductionStages(gameRoot, side);
+    }
+
+    /**
+     * The post-load stages of production bootstrap: common lifecycle,
+     * content binding, optional side phase, and the load report. Split out
+     * from {@link #bootstrapProduction(Path, String)} so the same sequence
+     * can run either synchronously or deferred post-bootstrap.
+     *
+     * @param gameRoot the game instance root
+     * @param side     the distribution side ({@code client}, {@code server}, or {@code null})
+     */
+    private void dispatchProductionStages(Path gameRoot, String side)
+            throws DependencyResolutionException {
         invokeCommonLifecycle();
         // v26.7-Alpha.1: bind Aprism-native content into the real MC
-        // registries (NO_REMAP profile only; fail-closed elsewhere).
+        // registries, deferred until after game bootstrap (fail-closed).
         if (!"BE".equalsIgnoreCase(mcEdit)) {
-            GameContentBindingInstaller contentBinder =
-                    new GameContentBindingInstaller(gameRegistries);
-            contentBinder.setRemapProfile(mcProfile == McProfile.REMAPPED);
-            var bindingResults = contentBinder.bindAll();
-            long boundOk = bindingResults.stream().filter(r -> r.ok()).count();
-            if (logging != null) {
-                logging.getLogger("contentbind").info(
-                        "Content binding: " + boundOk + "/" + bindingResults.size()
-                                + " unit(s) bound");
-            }
+            ContentBindingRunner.submit(gameRegistries, mcProfile == McProfile.REMAPPED);
         }
         AprismPhase sidePhase = sidePhaseFor(side);
         if (sidePhase != null) {

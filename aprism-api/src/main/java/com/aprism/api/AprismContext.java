@@ -36,4 +36,22 @@ public interface AprismContext {
      *         (Forge/NeoForge parity, v26.3-Alpha.7)
      */
     com.aprism.api.imc.InterModComms getInterModComms();
+
+    /**
+     * @return the typed item content registry whose entries bind into the
+     *         live game registries (v26.7-Alpha.1)
+     */
+    default com.aprism.api.registry.TypedRegistry<com.aprism.api.registry.ItemContent> getItemRegistry() {
+        throw new UnsupportedOperationException(
+                "getItemRegistry not supported by this context implementation");
+    }
+
+    /**
+     * @return the typed block content registry whose entries bind into the
+     *         live game registries (v26.7-Alpha.1)
+     */
+    default com.aprism.api.registry.TypedRegistry<com.aprism.api.registry.BlockContent> getBlockRegistry() {
+        throw new UnsupportedOperationException(
+                "getBlockRegistry not supported by this context implementation");
+    }
 }

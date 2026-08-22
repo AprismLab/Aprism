@@ -62,4 +62,14 @@ public final class AprismContextImpl implements AprismContext {
     public InterModComms getInterModComms() {
         return interModComms;
     }
+
+    @Override
+    public com.aprism.api.registry.TypedRegistry<com.aprism.api.registry.ItemContent> getItemRegistry() {
+        return AprismRuntime.instance().getGameRegistries().items();
+    }
+
+    @Override
+    public com.aprism.api.registry.TypedRegistry<com.aprism.api.registry.BlockContent> getBlockRegistry() {
+        return AprismRuntime.instance().getGameRegistries().blocks();
+    }
 }

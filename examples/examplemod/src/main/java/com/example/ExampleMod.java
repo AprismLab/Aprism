@@ -22,6 +22,12 @@ public final class ExampleMod implements IAprismMod {
         Logger log = context.getLogger();
         log.info("[ExampleMod] onInitialize: modId=" + context.getMod().getId()
                 + ", version=" + context.getMod().getVersion());
+        // v26.7-Alpha.1 live proof: register an item; the loader binds it into
+        // the real MC registries after the common lifecycle.
+        com.aprism.api.registry.ResourceKey key =
+                com.aprism.api.registry.ResourceKey.parse("aprism:smoke_ruby");
+        context.getItemRegistry().register(key, new com.aprism.api.registry.ItemContent(key, 32));
+        log.info("[ExampleMod] registered content aprism:smoke_ruby");
     }
 
     @Override

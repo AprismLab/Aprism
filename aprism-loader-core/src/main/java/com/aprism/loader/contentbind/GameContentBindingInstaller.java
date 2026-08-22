@@ -192,7 +192,9 @@ public final class GameContentBindingInstaller {
                     blockRegistry, itemClass, blockClass,
                     IdentifierFactory.detect(identifier));
         } catch (ReflectiveOperationException | RuntimeException e) {
-            LOG.fine("GameContentBindingInstaller: MC registry surface unresolved: " + e);
+            LOG.warning("GameContentBindingInstaller: MC registry surface unresolved: "
+                    + e.getClass().getName() + ": " + e.getMessage()
+                    + (e.getCause() != null ? " caused by " + e.getCause() : ""));
             return null;
         }
     }

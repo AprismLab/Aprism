@@ -105,10 +105,14 @@ TIMEOUT_SECS="${APRISM_SMOKE_TIMEOUT:-150}"
 FOUND=0
 for _ in $(seq 1 "$TIMEOUT_SECS"); do
   sleep 1
-  if grep -q "\[ExampleMod\] onComplete" "$LOG" 2>/dev/null; then
-    FOUND=1
-    break
-  fi
+        if grep -q "\[ExampleMod\] onComplete" "$LOG" 2>/dev/null; then
+          FOUND=1
+          # Grace period: let buffered JUL/console output flush before we
+          # force-kill, otherwise trailing lines (content binding, load
+          # report) are lost and assertions misfire.
+          sleep 3
+          break
+        fi
 done
 
 # Stop the game regardless of outcome.
@@ -133,6 +137,9 @@ grep -q "\[ExampleMod\] onSetup" "$LOG" || fail "onSetup missing"
 grep -q "\[ExampleMod\] onComplete" "$LOG" || fail "onComplete missing"
 grep -q "Aprism Load Report ($VERSION)" "$LOG" || fail "Load Report banner missing for $VERSION"
 grep -q "failed 0" "$LOG" || fail "load report reports failures"
+# v26.7-Alpha.1: real content registration proof.
+grep -q "registered content aprism:smoke_ruby" "$LOG" || fail "examplemod content registration missing"
+grep -qE "Content binding: 1/[0-9]+ unit" "$LOG" || fail "content binding line missing (item not bound into live registries)"
 
 echo "SMOKE PASS: real-game Aprism lifecycle verified ($VERSION)"
 exit 0
