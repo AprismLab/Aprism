@@ -66,6 +66,7 @@ import com.aprism.loader.settings.SettingsRegistry;
 import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
 import com.aprism.loader.modmenu.ModListState;
+import com.aprism.loader.status.StatusPublisher;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -1212,6 +1213,11 @@ public final class AprismRuntime {
         // registry from the loaded containers plus the load report, so the
         // future in-game mod menu sees every unit with its final state.
         rebuildModList();
+        // v26.6-Alpha.2 MDL integration: publish the machine-readable status
+        // file so external tooling (mdl diagnose, installer reports) can query
+        // the loader state without parsing game logs.
+        StatusPublisher.publish(gameRoot, StatusPublisher.buildSnapshot(
+                aprismVersion, mcEdit, mcVersion, "LOADED", modListRegistry, loadReport));
         if (logging != null) {
             logging.getLogger("runtime").info("performLoad complete: "
                     + mods.size() + " mod(s), "
@@ -1737,6 +1743,10 @@ public final class AprismRuntime {
         }
         // Runs BEFORE the shared objects are nulled so the context handed to
         // onShutdown still exposes a live event bus, registry and registrar.
+        // v26.6-Alpha.2: refresh the status file to SHUTDOWN while the state
+        // is still queryable, so external tools never see a stale LOADED doc.
+        StatusPublisher.publish(gameRoot, StatusPublisher.buildSnapshot(
+                aprismVersion, mcEdit, mcVersion, "SHUTDOWN", modListRegistry, loadReport));
         // v26.2-Alpha.1: flush and close the logging facility (sinks keep the
         // retained ring buffer for post-shutdown inspection).
         if (logging != null) {

@@ -1231,3 +1231,29 @@ first-time Aprism setup a guided flow instead of a manual javaagent edit:
 Twenty-eight tests cover profile building/validation (5), launcher
 detection single+parent (7), config/script generation per launcher (9),
 and installation validation errors/warnings/report (7).
+
+## MDL Deep Integration: Machine-Readable Status (v26.6-Alpha.2)
+
+The loader now publishes a machine-readable status document at
+<gameRoot>/aprism-status.json (schema aprism.status/v1) after every load
+milestone, giving launcher tooling (MDL diagnose), the installer first-run
+report, and support workflows a single queryable file instead of game-log
+parsing:
+
+- **StatusPublisher.buildSnapshot** assembles the document from the runtime
+  state: schemaVersion, aprismVersion, mcEdit, mcVersion, generatedAt,
+  phase (LOADED / SHUTDOWN), okCount/failureCount, and per-unit entries
+  (kind, id, version, loaderKey, state) enriched with per-unit durations
+  from the LoadReport when available.
+- **Atomic publish**: write to .tmp then ATOMIC_MOVE so concurrent readers
+  never observe a half-written document; non-atomic fallback for
+  filesystems without atomic move support.
+- **Fail-safe**: IO errors are logged at FINE and swallowed; a read-only or
+  missing game root never breaks the boot.
+- **Runtime wiring**: published with phase=LOADED at the end of performLoad
+  and refreshed with phase=SHUTDOWN at the start of shutdown() while the
+  state is still queryable.
+
+Ten tests cover publish/republish/unpublish, schema identity fields,
+null-argument handling, tmp-file cleanup, unit counting from the mod list,
+duration enrichment from the load report, and null-field normalization.
