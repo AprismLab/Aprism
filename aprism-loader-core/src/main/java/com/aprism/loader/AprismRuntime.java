@@ -68,7 +68,7 @@ import com.aprism.loader.modmenu.ModListRegistry;
 import com.aprism.loader.modmenu.ModListState;
 import com.aprism.loader.status.StatusPublisher;
 import com.aprism.loader.contentbind.ContentBindingRunner;
-import com.aprism.loader.contentbind.CommandBindingInstaller;
+import com.aprism.loader.contentbind.BrigadierCommandBinder;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -1307,8 +1307,8 @@ public final class AprismRuntime {
         // reachable yet), so this fails closed with NO_DISPATCHER until the
         // discovery seam lands; registration state stays queryable.
         try {
-            CommandBindingInstaller cmdBinder =
-                    new CommandBindingInstaller(commandRegistration);
+            BrigadierCommandBinder cmdBinder =
+                    new BrigadierCommandBinder(commandRegistration);
             cmdBinder.setRemapProfile(mcProfile == McProfile.REMAPPED);
             cmdBinder.bindAll();
         } catch (Throwable t) {

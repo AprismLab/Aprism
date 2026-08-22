@@ -8,14 +8,14 @@ import org.junit.jupiter.api.Test;
 
 import com.aprism.api.commands.CommandRegistration;
 import com.aprism.api.commands.CommandSpec;
-import com.aprism.loader.contentbind.CommandBindingInstaller.BindResult;
+import com.aprism.loader.contentbind.BrigadierCommandBinder.BindResult;
 // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
 /**
- * Tests for {@link CommandBindingInstaller} against the test-sourceset
+ * Tests for {@link BrigadierCommandBinder} against the test-sourceset
  * Brigadier stubs (live-game dispatcher discovery is a follow-up milestone).
  */
-class CommandBindingInstallerTest {
+class BrigadierCommandBinderTest {
 
     @Test
     void bindsFrozenSpecsIntoLiveDispatcher() {
@@ -25,7 +25,7 @@ class CommandBindingInstallerTest {
         reg.register(new CommandSpec("aprism_ping", "test", (Runnable) () -> ran[0] = true));
         reg.freezeWindow();
 
-        CommandBindingInstaller installer = new CommandBindingInstaller(reg);
+        BrigadierCommandBinder installer = new BrigadierCommandBinder(reg);
         installer.attachDispatcher(
                 new com.mojang.brigadier.CommandDispatcher<Object>());
         List<BindResult> results = installer.bindAll();
@@ -41,7 +41,7 @@ class CommandBindingInstallerTest {
         reg.register(new CommandSpec("aprism_x", "test", (Runnable) () -> { }));
         reg.freezeWindow();
 
-        List<BindResult> results = new CommandBindingInstaller(reg).bindAll();
+        List<BindResult> results = new BrigadierCommandBinder(reg).bindAll();
         assertEquals(1, results.size());
         assertFalse(results.get(0).ok());
         assertEquals("NO_DISPATCHER", results.get(0).refusal());
@@ -54,7 +54,7 @@ class CommandBindingInstallerTest {
         reg.register(new CommandSpec("aprism_y", "test", (Runnable) () -> { }));
         reg.freezeWindow();
 
-        CommandBindingInstaller installer = new CommandBindingInstaller(reg);
+        BrigadierCommandBinder installer = new BrigadierCommandBinder(reg);
         installer.setRemapProfile(true);
         List<BindResult> results = installer.bindAll();
         assertEquals("PROFILE_UNSUPPORTED", results.get(0).refusal());
@@ -64,7 +64,7 @@ class CommandBindingInstallerTest {
     void emptyRegistrationBindsNothing() {
         var reg = new com.aprism.loader.commands.CommandRegistrationImpl();
         List<BindResult> results =
-                new CommandBindingInstaller(reg).bindAll();
+                new BrigadierCommandBinder(reg).bindAll();
         assertTrue(results.isEmpty());
     }
 }

@@ -30,7 +30,7 @@ import com.aprism.api.commands.CommandSpec;
  *
  * @author BlockConnect@StarsailsClover
  */
-public final class CommandBindingInstaller {
+public final class BrigadierCommandBinder {
 // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
     private static final Logger LOG = Logger.getLogger("aprism.contentbind");
@@ -58,7 +58,7 @@ public final class CommandBindingInstaller {
     }
 // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
-    public CommandBindingInstaller(CommandRegistration registration) {
+    public BrigadierCommandBinder(CommandRegistration registration) {
         this.registration = Objects.requireNonNull(registration, "registration");
     }
 
@@ -92,7 +92,7 @@ public final class CommandBindingInstaller {
         }
         Object dispatcher = liveDispatcher;
         if (dispatcher == null) {
-            LOG.fine("CommandBindingInstaller: no live dispatcher attached");
+            LOG.fine("BrigadierCommandBinder: no live dispatcher attached");
             for (CommandSpec s : specs) {
                 results.add(new BindResult(s.name(), false, "NO_DISPATCHER"));
             }
