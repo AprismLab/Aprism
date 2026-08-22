@@ -67,6 +67,7 @@ import com.aprism.loader.modmenu.ModListEntry;
 import com.aprism.loader.modmenu.ModListRegistry;
 import com.aprism.loader.modmenu.ModListState;
 import com.aprism.loader.status.StatusPublisher;
+import com.aprism.loader.contentbind.GameContentBindingInstaller;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -1257,6 +1258,20 @@ public final class AprismRuntime {
         loadReport = new LoadReport();
         performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
         invokeCommonLifecycle();
+        // v26.7-Alpha.1: bind Aprism-native content into the real MC
+        // registries (NO_REMAP profile only; fail-closed elsewhere).
+        if (!"BE".equalsIgnoreCase(mcEdit)) {
+            GameContentBindingInstaller contentBinder =
+                    new GameContentBindingInstaller(gameRegistries);
+            contentBinder.setRemapProfile(mcProfile == McProfile.REMAPPED);
+            var bindingResults = contentBinder.bindAll();
+            long boundOk = bindingResults.stream().filter(r -> r.ok()).count();
+            if (logging != null) {
+                logging.getLogger("contentbind").info(
+                        "Content binding: " + boundOk + "/" + bindingResults.size()
+                                + " unit(s) bound");
+            }
+        }
         AprismPhase sidePhase = sidePhaseFor(side);
         if (sidePhase != null) {
             LOG.info("Dispatching side phase: " + sidePhase);

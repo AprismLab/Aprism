@@ -1302,3 +1302,15 @@ Nine tests cover header/environment rendering, null-field stability, the
 no-runtime path, file writing with and without a game root, hint mapping
 (six known signatures + unknown/null), and the mutual-exclusion warning in
 both its triggered and quiet states.
+
+## Real Content Registration (v26.7-Alpha.1) - QA2 content-superset gap
+
+Aprism-native content records now bind into the live Minecraft registries.
+On the NO_REMAP profile (MC 26.1+, unobfuscated),
+GameContentBindingInstaller reflects every ItemContent/BlockContent from
+GameRegistries into BuiltInRegistries.ITEM/.BLOCK via the static
+Registry.register helper, under aprism:<key> identifiers. Bound items exist
+in the real game registry (creative menu, /give). Fail-closed contract:
+PROFILE_UNSUPPORTED on remapped profiles; TARGET_UNRESOLVED when the MC surface is absent; ENTRY_FAILED isolated per record; never throws into the game. Runtime wiring: bootstrapProduction invokes the binder after the common lifecycle for JE loads, gated by McProfile.
+
+Four unit tests run against test-sourceset MC stubs (the live-game proof lands with the smoke harness). Production artifacts carry no Minecraft classes.

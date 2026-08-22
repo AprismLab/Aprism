@@ -4,7 +4,7 @@
 
 [versions]
 # Aprism (public: v<Year>.<minor>[-Alpha.<n>])
-aprism = "v26.6"
+aprism = "v26.7-Alpha.1"
 
 # Minecraft / Mappings (Alpha 1 target: 26.2, unobfuscated, no remap)
 minecraft = "26.2"
