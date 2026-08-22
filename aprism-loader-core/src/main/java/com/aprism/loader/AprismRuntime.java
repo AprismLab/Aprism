@@ -1291,9 +1291,15 @@ public final class AprismRuntime {
             throws DependencyResolutionException {
         invokeCommonLifecycle();
         // v26.7-Alpha.1: bind Aprism-native content into the real MC
-        // registries, deferred until after game bootstrap (fail-closed).
+        // registries. This stage runs AFTER vanilla bootstrap (the
+        // GameBootstrapGate defers it), so registries are initialized and
+        // still writable - direct bind, fail-closed per entry.
         if (!"BE".equalsIgnoreCase(mcEdit)) {
-            ContentBindingRunner.submit(gameRegistries, mcProfile == McProfile.REMAPPED);
+            try {
+                ContentBindingRunner.bindNow(gameRegistries, mcProfile == McProfile.REMAPPED);
+            } catch (Throwable t) {
+                LOG.warning("Content binding failed: " + t);
+            }
         }
         AprismPhase sidePhase = sidePhaseFor(side);
         if (sidePhase != null) {

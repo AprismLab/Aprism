@@ -127,12 +127,40 @@ public final class GameContentBindingInstaller {
             Object propertiesOut = stacks != null && content.maxStack() != 64
                     ? stacks.invoke(properties, content.maxStack())
                     : properties;
+            setIdOnProperties(handles, propertiesOut, content.id());
             Constructor<?> ctor = handles.itemClass.getConstructor(propertiesClass);
             Object item = ctor.newInstance(propertiesOut);
             return register(handles, "item", content.id(), item);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            LOG.warning("Failed to bind item '" + content.id().combined() + "': " + e);
+            Throwable cause = (e instanceof java.lang.reflect.InvocationTargetException ite
+                    && ite.getCause() != null) ? ite.getCause() : e;
+            LOG.warning("Failed to bind item '" + content.id().combined() + "': "
+                    + cause);
             return new BindingResult("item", content.id(), false, "ENTRY_FAILED");
+        }
+    }
+
+    /**
+     * Modern MC requires {@code Item.Properties#setId(ResourceKey)} before
+     * construction ("Item id not set" otherwise). Builds the MC ResourceKey
+     * reflectively from Registries.ITEM + Identifier.
+     */
+    private static void setIdOnProperties(RegistryHandles handles, Object properties,
+            ResourceKey key) {
+        try {
+            ClassLoader loader = properties.getClass().getClassLoader();
+            Class<?> registries = loader.loadClass("net.minecraft.core.registries.Registries");
+            Object itemRegistryKey = registries.getField("ITEM").get(null);
+            Class<?> resourceKeyClass = loader.loadClass("net.minecraft.resources.ResourceKey");
+            Object identifier = handles.identifiers().create(key.namespace(), key.name());
+            Method create = resourceKeyClass.getMethod("create",
+                    resourceKeyClass, handles.identifiers().type());
+            Object mcKey = create.invoke(null, itemRegistryKey, identifier);
+            properties.getClass().getMethod("setId", resourceKeyClass)
+                    .invoke(properties, mcKey);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Older/newer naming without setId: constructor will report the
+            // missing id as ENTRY_FAILED with its own message.
         }
     }
 
