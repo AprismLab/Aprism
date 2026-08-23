@@ -1311,6 +1311,15 @@ public final class AprismRuntime {
             BrigadierCommandBinder cmdBinder =
                     new BrigadierCommandBinder(commandRegistration);
             cmdBinder.setRemapProfile(mcProfile == McProfile.REMAPPED);
+            // v26.7-Alpha.5: discovery seam - attach the live integrated-
+            // server dispatcher when one exists (single-player worlds).
+            Object liveDispatcher =
+                    com.aprism.loader.contentbind.LiveInstanceDiscovery
+                            .integratedCommandDispatcher();
+            if (liveDispatcher != null) {
+                cmdBinder.attachDispatcher(liveDispatcher);
+                LOG.info("Live command dispatcher discovered (integrated server)");
+            }
             cmdBinder.bindAll();
         } catch (Throwable t) {
             LOG.warning("Command binding failed: " + t);
