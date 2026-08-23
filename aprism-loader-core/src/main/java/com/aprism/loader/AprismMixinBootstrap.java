@@ -54,8 +54,30 @@ public final class AprismMixinBootstrap {
      *
      * @param cl the Aprism classloader to bind to the mixin service
      */
+    private static boolean isFabricHost() {
+        for (String k : new String[] {
+                "net.fabricmc.loader.impl.launch.knot.Knot",
+                "net.fabricmc.loader.api.FabricLoader"}) {
+            try {
+                Class.forName(k, false, AprismMixinBootstrap.class.getClassLoader());
+                return true;
+            } catch (Throwable ignored) {
+                // try next marker
+            }
+        }
+        return false;
+    }
     static void bootstrap(AprismClassLoader cl) {
         classLoader = cl;
+        // v26.7-Alpha.5: under a Fabric/Knot host, the host loader owns the
+        // Mixin environment (and ASM). Bootstrapping our own service there
+        // fails safe today but is pointless; defer to the host instead.
+        if (!environmentInitialized && isFabricHost()) {
+            LOG.info("Fabric host detected - deferring Mixin environment "
+                    + "to the host loader");
+            environmentInitialized = true; // mark handled; no Aprism service
+            return;
+        }
         if (!environmentInitialized) {
             try {
                 // MixinBootstrap.init() registers the Mixin version (which

@@ -43,6 +43,14 @@ shadowJar {
         )
     }
     relocate 'com.google.gson', 'aprism.libs.gson'
+    // Fabric-host variant (-PfabricVariant=true): host provides ASM and owns
+    // Mixin there, so relocate ASM and drop our Mixin classes/services.
+    // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+    if (project.findProperty('fabricVariant')) {
+        relocate 'org.objectweb.asm', 'aprism.libs.asm'
+        exclude 'org/spongepowered/**'
+        exclude 'META-INF/services/org.spongepowered.asm.service.*'
+    }
     // ASM is deliberately NOT relocated: SpongePowered Mixin detects the ASM
     // version via org.objectweb.asm to decide which Java class-file versions it
     // can weave. Relocating ASM breaks that detection (it then reports ASM 9.0
