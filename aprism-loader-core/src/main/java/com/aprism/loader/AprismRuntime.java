@@ -69,6 +69,7 @@ import com.aprism.loader.modmenu.ModListState;
 import com.aprism.loader.status.StatusPublisher;
 import com.aprism.loader.contentbind.ContentBindingRunner;
 import com.aprism.loader.contentbind.BrigadierCommandBinder;
+import com.aprism.loader.contentbind.KeyInputBindingInstaller;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -1313,6 +1314,17 @@ public final class AprismRuntime {
             cmdBinder.bindAll();
         } catch (Throwable t) {
             LOG.warning("Command binding failed: " + t);
+        }
+        // v26.7-Alpha.3: bind key bindings into the live input system when a
+        // client is discoverable (Minecraft.getInstance()); fail-closed
+        // NO_CLIENT on dedicated servers and non-client hosts.
+        try {
+            KeyInputBindingInstaller keyBinder =
+                    new KeyInputBindingInstaller(keyBindingRegistry);
+            keyBinder.setRemapProfile(mcProfile == McProfile.REMAPPED);
+            keyBinder.bindAll();
+        } catch (Throwable t) {
+            LOG.warning("Key binding failed: " + t);
         }
         AprismPhase sidePhase = sidePhaseFor(side);
         if (sidePhase != null) {
