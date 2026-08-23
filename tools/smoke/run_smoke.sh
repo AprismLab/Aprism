@@ -95,7 +95,7 @@ AGENT_ARGS="$SMOKE_DIR/agent_args.txt"
   echo "0"
   # v26.7-Alpha.5: auto-join a world so per-world instances (integrated
   # server Brigadier dispatcher, packet listener) come alive.
-  echo "--quickPlaySingle"
+  echo "--quickPlaySingleplayer"
   echo "New World"
 } > "$AGENT_ARGS"
 
@@ -114,7 +114,13 @@ for _ in $(seq 1 "$TIMEOUT_SECS"); do
           # Grace period: let buffered JUL/console output flush before we
           # force-kill, otherwise trailing lines (content binding, load
           # report) are lost and assertions misfire.
-          sleep 30
+                    # v26.7-Alpha.5: wait for world join (quickPlay) so per-world
+          # instances come alive and the deferred command binder fires.
+          for w in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90; do
+            sleep 1
+            grep -q "Command binding: 1/1 bound" "$LOG" 2>/dev/null && break
+          done
+          sleep 2
           break
         fi
 done
