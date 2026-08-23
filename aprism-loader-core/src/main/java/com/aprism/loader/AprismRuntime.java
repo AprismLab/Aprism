@@ -1319,8 +1319,12 @@ public final class AprismRuntime {
             if (liveDispatcher != null) {
                 cmdBinder.attachDispatcher(liveDispatcher);
                 LOG.info("Live command dispatcher discovered (integrated server)");
+                cmdBinder.bindAll();
+            } else {
+                // v26.7-Alpha.5: world not joined yet - poll until the
+                // integrated server (and its dispatcher) comes alive.
+                cmdBinder.bindWhenAvailable(120000);
             }
-            cmdBinder.bindAll();
         } catch (Throwable t) {
             LOG.warning("Command binding failed: " + t);
         }

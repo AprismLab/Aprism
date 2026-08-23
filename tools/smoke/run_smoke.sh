@@ -93,6 +93,10 @@ AGENT_ARGS="$SMOKE_DIR/agent_args.txt"
   echo "release"
   echo "--accessToken"
   echo "0"
+  # v26.7-Alpha.5: auto-join a world so per-world instances (integrated
+  # server Brigadier dispatcher, packet listener) come alive.
+  echo "--quickPlaySingle"
+  echo "New World"
 } > "$AGENT_ARGS"
 
 rm -f "$LOG"
@@ -110,7 +114,7 @@ for _ in $(seq 1 "$TIMEOUT_SECS"); do
           # Grace period: let buffered JUL/console output flush before we
           # force-kill, otherwise trailing lines (content binding, load
           # report) are lost and assertions misfire.
-          sleep 3
+          sleep 30
           break
         fi
 done

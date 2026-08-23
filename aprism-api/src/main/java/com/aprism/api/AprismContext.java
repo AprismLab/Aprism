@@ -38,6 +38,14 @@ public interface AprismContext {
     com.aprism.api.imc.InterModComms getInterModComms();
 
     /**
+     * @return the command registration surface (Fabric parity, v26.3-Alpha.8)
+     */
+    default com.aprism.api.commands.CommandRegistration getCommandRegistration() {
+        throw new UnsupportedOperationException(
+                "getCommandRegistration not supported by this context implementation");
+    }
+
+    /**
      * @return the typed item content registry whose entries bind into the
      *         live game registries (v26.7-Alpha.1)
      */

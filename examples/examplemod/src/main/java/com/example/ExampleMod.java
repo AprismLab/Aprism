@@ -28,6 +28,11 @@ public final class ExampleMod implements IAprismMod {
                 com.aprism.api.registry.ResourceKey.parse("aprism:smoke_ruby");
         context.getItemRegistry().register(key, new com.aprism.api.registry.ItemContent(key, 32));
         log.info("[ExampleMod] registered content aprism:smoke_ruby");
+        // v26.7-Alpha.5 live proof: a command bound into the live Brigadier
+        // dispatcher when the integrated server exists.
+        context.getCommandRegistration().register(new com.aprism.api.commands.CommandSpec(
+                "aprism_hello", "smoke proof command", (Runnable) () -> { }));
+        log.info("[ExampleMod] registered command aprism_hello");
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.aprism.loader;
 
+import com.aprism.api.commands.CommandRegistration;
 import java.util.logging.Logger;
 
 import com.aprism.api.AprismContext;
@@ -66,6 +67,11 @@ public final class AprismContextImpl implements AprismContext {
     @Override
     public com.aprism.api.registry.TypedRegistry<com.aprism.api.registry.ItemContent> getItemRegistry() {
         return AprismRuntime.instance().getGameRegistries().items();
+    }
+
+    @Override
+    public CommandRegistration getCommandRegistration() {
+        return AprismRuntime.instance().getCommandRegistration();
     }
 
     @Override

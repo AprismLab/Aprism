@@ -107,6 +107,44 @@ public final class BrigadierCommandBinder {
     }
 // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
+    /**
+     * Spawns a daemon poller that retries the bind every 2 s (up to
+     * {@code timeoutMs}) until the live dispatcher appears - typically when
+     * the player joins a single-player world and the integrated server
+     * starts. Never blocks the caller.
+     *
+     * @param timeoutMs total polling budget in milliseconds
+     */
+    public void bindWhenAvailable(long timeoutMs) {
+        Thread poller = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    Object d = LiveInstanceDiscovery.integratedCommandDispatcher();
+                    if (d != null) {
+                        attachDispatcher(d);
+                        LOG.info("Live command dispatcher discovered (integrated server)");
+                        List<BindResult> results = bindAll();
+                        if (!results.isEmpty()
+                                && results.stream().anyMatch(BindResult::ok)) {
+                            return;
+                        }
+                    }
+                } catch (RuntimeException e) {
+                    LOG.warning("Deferred command binding attempt failed: " + e);
+                }
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ignored) {
+                    return;
+                }
+            }
+            LOG.info("Deferred command binding gave up after " + timeoutMs + " ms");
+        }, "aprism-command-bind");
+        poller.setDaemon(true);
+        poller.start();
+    }
+
     private BindResult bindOne(Object dispatcher, CommandSpec spec) {
         try {
             ClassLoader loader = dispatcher.getClass().getClassLoader();
