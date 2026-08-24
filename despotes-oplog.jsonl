@@ -22,3 +22,17 @@
 {"at":1787597598894,"source":"http","transport":"http","requestId":"","type":"key","ok":true,"result":"ok","durationUs":90}
 {"at":1787598609192,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":1161}
 {"at":1787598773335,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":393}
+{"at":1787601084072,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":8709}
+{"at":1787601088207,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":175}
+{"at":1787601090264,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":1327}
+{"at":1787601217287,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":256952}
+{"at":1787601221729,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":818}
+{"at":1787601223846,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":84771}
+{"at":1787601528120,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":115}
+{"at":1787601622218,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":44821}
+{"at":1787601627433,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":133}
+{"at":1787601708899,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":116}
+{"at":1787601764425,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":5395}
+{"at":1787601769725,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":377}
+{"at":1787601772026,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":198854}
+{"at":1787601950264,"source":"http","transport":"http","requestId":"","type":"type","ok":true,"result":"ok","durationUs":12516}

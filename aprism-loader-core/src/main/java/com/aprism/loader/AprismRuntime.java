@@ -923,6 +923,52 @@ public final class AprismRuntime {
         }
     }
 
+    // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+    /**
+     * Adds a jar to the shared class space. With
+     * {@code aprism.sharedClassSpace=system} on a NO_REMAP profile (and an
+     * Instrumentation handle present), jars are appended to the SYSTEM
+     * classloader search path instead of the child AprismClassLoader
+     * (v26.7-Alpha.6, research doc docs/research/shared-class-space/):
+     * mods and vanilla then share ONE defining loader, so vanilla classes
+     * transformed by mixin-injecting mods (e.g. Lithium) can resolve the
+     * mod classes they reference - the parent/child topology cannot.
+     * Falls back to the child loader on any failure or when the flag is
+     * absent (behaviour identical to previous releases).
+     *
+     * @param jar the classpath jar to add
+     */
+    private void addToSharedSpace(Path jar) {
+        if (sharedSystemClassSpace()) {
+            try {
+                // Kept open intentionally: the system loader reads lazily,
+                // and holding the file matches the previous URLClassLoader
+                // lock semantics for the lifetime of the game process.
+                instrumentation.appendToSystemClassLoaderSearch(
+                        new java.util.jar.JarFile(jar.toFile()));
+                return;
+            } catch (IOException e) {
+                LOG.warning("System class-space append failed for " + jar
+                        + " - falling back to AprismClassLoader: " + e);
+            }
+        }
+        classLoader.addModJar(jar);
+    }
+
+    /**
+     * @return whether the system class-space mode is active (flag on,
+     *         Instrumentation present, no-remap profile)
+     */
+    private boolean sharedSystemClassSpace() {
+        if (!"system".equalsIgnoreCase(System.getProperty("aprism.sharedClassSpace"))) {
+            return false;
+        }
+        if (instrumentation == null) {
+            return false;
+        }
+        return mcProfile != McProfile.REMAPPED;
+    }
+
     /**
      * Extracts all embedded jars from a {@code .aep} archive into a temporary
      * directory and adds them to the classloader.
@@ -941,7 +987,7 @@ public final class AprismRuntime {
                 String safeName = jarName.replace("/", "_");
                 Path target = tempDir.resolve(baseName + "_" + safeName);
                 extensionLoader.extractJar(aepFile, jarName, target);
-                classLoader.addModJar(target);
+                addToSharedSpace(target);
             }
         } catch (IOException e) {
             LOG.warning("Failed to extract jars from " + aepFile + ": " + e.getMessage());
@@ -1106,7 +1152,7 @@ public final class AprismRuntime {
                     extractModJars(dm, container);
                 } else {
                     // Plain .jar / .litemod: the archive itself is the classpath entry
-                    classLoader.addModJar(dm.path());
+                    addToSharedSpace(dm.path());
                     container.addExtractedJarPath(dm.path());
                 }
                 mods.put(container.getId(), container);
@@ -1164,7 +1210,7 @@ public final class AprismRuntime {
                 try (InputStream is = Files.newInputStream(jar)) {
                     Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
                 }
-                classLoader.addModJar(target);
+                addToSharedSpace(target);
                 container.addExtractedJarPath(target);
             }
         } catch (IOException e) {
