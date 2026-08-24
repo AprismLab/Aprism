@@ -1323,7 +1323,7 @@ public final class AprismRuntime {
             } else {
                 // v26.7-Alpha.5: world not joined yet - poll until the
                 // integrated server (and its dispatcher) comes alive.
-                cmdBinder.bindWhenAvailable(120000);
+                cmdBinder.bindWhenAvailable(1800000);
             }
         } catch (Throwable t) {
             LOG.warning("Command binding failed: " + t);
