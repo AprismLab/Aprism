@@ -1424,7 +1424,7 @@ public final class AprismRuntime {
         ensureInitialized();
         ModDiscoverer discoverer = new ModDiscoverer();
         for (ModDiscoverer.DiscoveredMod dm : discoverer.discover(modsDir)) {
-            classLoader.addModJar(dm.path());
+            addToSharedSpace(dm.path());
             LoadedModContainer container = new LoadedModContainer(dm.manifest(), dm.path(), dm.loaderKey());
             mods.put(container.getId(), container);
         }
