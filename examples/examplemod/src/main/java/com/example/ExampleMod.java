@@ -33,6 +33,18 @@ public final class ExampleMod implements IAprismMod {
         context.getCommandRegistration().register(new com.aprism.api.commands.CommandSpec(
                 "aprism_hello", "smoke proof command", (Runnable) () -> { }));
         log.info("[ExampleMod] registered command aprism_hello");
+        // v26.7-Alpha.8 multi-content soak: 10 items + blocks registered
+        for (int i = 1; i <= 10; i++) {
+            com.aprism.api.registry.ResourceKey k = com.aprism.api.registry.ResourceKey.parse("aprism:soak_item_" + i);
+            context.getItemRegistry().register(k, new com.aprism.api.registry.ItemContent(k, 16));
+        }
+        for (int i = 1; i <= 5; i++) {
+            com.aprism.api.registry.ResourceKey bk = com.aprism.api.registry.ResourceKey.parse("aprism:soak_block_" + i);
+            context.getBlockRegistry().register(bk, new com.aprism.api.registry.BlockContent(bk, 1.5f, 2.0f, i));
+        }
+        context.getCommandRegistration().register(new com.aprism.api.commands.CommandSpec(
+                "aprism_soak", "soak probe command", (Runnable) () -> { }));
+        log.info("[ExampleMod] soak content registered: 10 items, 5 blocks, 2 commands");
     }
 
     @Override

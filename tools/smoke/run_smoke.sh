@@ -149,7 +149,8 @@ grep -q "Aprism Load Report ($VERSION)" "$LOG" || fail "Load Report banner missi
 grep -q "failed 0" "$LOG" || fail "load report reports failures"
 # v26.7-Alpha.1: real content registration proof.
 grep -q "registered content aprism:smoke_ruby" "$LOG" || fail "examplemod content registration missing"
-grep -qE "Content binding: 1/[0-9]+ unit" "$LOG" || fail "content binding line missing (item not bound into live registries)"
+grep -qE "Content binding: 1[6]/[0-9]+ unit" "$LOG" || fail "soak content binding missing (expected 16 bound units)"
+grep -q "Command binding: 2/2 bound" "$LOG" || fail "soak command binding missing (expected 2/2)"
 
 echo "SMOKE PASS: real-game Aprism lifecycle verified ($VERSION)"
 exit 0
