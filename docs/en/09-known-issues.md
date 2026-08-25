@@ -95,3 +95,16 @@
     release workflow now mirrors every signed artifact to Modrinth (gated on
     MODRINTH_TOKEN); GitHub Releases remains the primary,
     verification-authoritative channel.
+
+## v26.7 Content Binding
+
+19. **Block binding requires a provider seam.** Items bind fully (11/11 in
+    the Alpha.8 soak); blocks fail because modern MC's
+    BlockBehaviour.Properties factory needs a HolderLookup provider that the
+    binder does not yet supply. Refinement scheduled for the next line.
+20. **Pre-26.1 profiles are documented-limitation (DEC-PRE261).** Binding
+    requires NO_REMAP; cross-mapping is a v26.8 candidate workstream.
+    BlockBehaviour.Properties factory needs a HolderLookup provider that the
+    binder does not yet supply. Refinement scheduled for the next line.
+20. **Pre-26.1 profiles are documented-limitation (DEC-PRE261).** Binding
+    requires NO_REMAP; cross-mapping is a v26.8 candidate workstream.
