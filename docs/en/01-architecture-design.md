@@ -1314,3 +1314,22 @@ in the real game registry (creative menu, /give). Fail-closed contract:
 PROFILE_UNSUPPORTED on remapped profiles; TARGET_UNRESOLVED when the MC surface is absent; ENTRY_FAILED isolated per record; never throws into the game. Runtime wiring: bootstrapProduction invokes the binder after the common lifecycle for JE loads, gated by McProfile.
 
 Four unit tests run against test-sourceset MC stubs (the live-game proof lands with the smoke harness). Production artifacts carry no Minecraft classes.
+
+## Pre-26.1 Binding Strategy (v26.7-Alpha.7) - DEC-PRE261
+## Pre-26.1 Binding Strategy (v26.7-Alpha.7) - DEC-PRE261
+
+Decision DEC-PRE261: content/command/input/network binding requires the
+NO_REMAP profile (MC 26.1+, unobfuscated official names). On REMAPPED
+log hint. Rationale: cross-mapping official Mojang names to runtime
+obfuscated names needs Mojang official mappings chained through the
+intermediary table - a per-version asset plus resolution workstream that
+deserves its own line (v26.8 candidate) rather than a rushed add-on.
+Priority targets remain 26.x-first per the internal version table.
+Decision DEC-PRE261: content/command/input/network binding requires the
+NO_REMAP profile (MC 26.1+, unobfuscated official names). On REMAPPED
+profiles the binders refuse fail-closed with PROFILE_UNSUPPORTED and a
+log hint. Rationale: cross-mapping official Mojang names to runtime
+obfuscated names needs Mojang official mappings chained through the
+intermediary table - a per-version asset plus resolution workstream that
+deserves its own line (v26.8 candidate) rather than a rushed add-on.
+Priority targets remain 26.x-first per the internal version table.
