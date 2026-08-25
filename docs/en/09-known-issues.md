@@ -1,4 +1,4 @@
-# Aprism Loader v26.6 — Known Issues
+﻿# Aprism Loader v26.6 鈥?Known Issues
 
 > Companion to the v26.6 release. Maintained by
 > BlockConnect@StarsailsClover. Items are ordered by theme, not severity;
@@ -75,7 +75,7 @@
    installation, so BE behaviour is verified by unit/integration tests
    only.
 9. **Ban risk.** Native BE modification on Xbox Live-enabled worlds carries
-   a real ban risk. Use offline worlds. Disclosed in Doc 01 §13.2.
+   a real ban risk. Use offline worlds. Disclosed in Doc 01 搂13.2.
 
 ## Real-Game Verification
 
@@ -108,3 +108,4 @@
     binder does not yet supply. Refinement scheduled for the next line.
 20. **Pre-26.1 profiles are documented-limitation (DEC-PRE261).** Binding
     requires NO_REMAP; cross-mapping is a v26.8 candidate workstream.
+
