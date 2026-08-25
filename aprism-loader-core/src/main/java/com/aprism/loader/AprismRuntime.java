@@ -956,11 +956,25 @@ public final class AprismRuntime {
     }
 
     /**
-     * @return whether the system class-space mode is active (flag on,
-     *         Instrumentation present, no-remap profile)
+     * @return whether the system class-space mode is active (Instrumentation
+     *         present, no-remap profile, and the mode not disabled).
+     *
+     *         Resolution order for {@code aprism.sharedClassSpace}:
+     *         explicit {@code false}/{@code off} disables; explicit
+     *         {@code system} enables; UNSET defaults to ENABLED when the
+     *         production agent is active ({@code aprism.agent.active},
+     *         set by AprismAgent premain) and DISABLED otherwise (tests,
+     *         embedders) so the legacy child-loader topology - and its
+     *         per-JVM isolation from the system search path - is preserved
+     *         everywhere except real game launches (v26.7-Alpha.7; Tier-3
+     *         acceptance evidence in AprismRefract FACT 2026-08-25d).
      */
     private boolean sharedSystemClassSpace() {
-        if (!"system".equalsIgnoreCase(System.getProperty("aprism.sharedClassSpace"))) {
+        String v = System.getProperty("aprism.sharedClassSpace");
+        if (v == null) {
+            v = System.getProperty("aprism.agent.active") != null ? "system" : "off";
+        }
+        if ("false".equalsIgnoreCase(v) || "off".equalsIgnoreCase(v)) {
             return false;
         }
         if (instrumentation == null) {
