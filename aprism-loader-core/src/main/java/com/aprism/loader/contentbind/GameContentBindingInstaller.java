@@ -92,7 +92,6 @@ public final class GameContentBindingInstaller {
             LOG.warning("Content binding requires the NO_REMAP profile (MC 26.1+);"
                     + " pre-26.1 binding is a documented limitation (v26.7-Alpha.7,"
                     + " DEC-PRE261) - see docs/en/01-architecture-design.md.");
-            }
             for (BlockContent c : blocks) {
                 results.add(new BindingResult("block", c.id(), false, "PROFILE_UNSUPPORTED"));
             }
