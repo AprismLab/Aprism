@@ -91,18 +91,21 @@ class RobustnessHostileInputTest {
     // --- Archive hostility ---
 
     @Test
-    void nonZipAjeFileIsRejectedGracefully() {
+    void nonZipAjeFileIsRejectedGracefully() throws Exception {
         Path fake = tempDir.resolve("fake.aje");
-        assertDoesNotThrow(() -> Files.writeString(fake, "this is not a zip"));
-        assertThrows(Exception.class, () ->
-                new ExtensionLoader("v26.8-Alpha.1", "JE", "26.2").listEmbeddedJarNames(fake));
+        Files.writeString(fake, "this is not a zip");
+        // v26.8-Alpha.3 semantics: unreadable archives fail CLOSED (empty
+        // list, warning logged) instead of throwing into the caller.
+        List<String> names =
+                new ExtensionLoader("v26.8-Alpha.1", "JE", "26.2")
+                        .listEmbeddedJarNames(fake);
+        assertTrue(names.isEmpty());
     }
 
     @Test
-    void zipSlipEntryCannotEscapeTempDir() throws Exception {
+    void zipSlipHostileArchiveFailsClosedGracefully() throws Exception {
         // Craft an .aep whose entry name attempts directory traversal.
         Path hostile = tempDir.resolve("hostile.aep");
-        Path escaped = tempDir.resolve("ESCAPED_MARKER.txt");
         try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(hostile))) {
             zos.putNextEntry(new ZipEntry("../ESCAPED_MARKER.txt"));
             zos.write("pwn".getBytes());
@@ -112,13 +115,17 @@ class RobustnessHostileInputTest {
             zos.closeEntry();
         }
         ExtensionLoader loader = new ExtensionLoader("v26.8-Alpha.1", "JE", "26.2");
+        // v26.8-Alpha.3: the hostile archive must fail CLOSED - no escape,
+        // no crash; listing degrades to empty and extraction rejects.
         List<String> names = loader.listEmbeddedJarNames(hostile);
-        // The traversal entry must not have escaped during listing/extraction.
-        loader.extractJar(hostile, "../ESCAPED_MARKER.txt",
-                tempDir.resolve("out.jar"));
+        assertTrue(names.isEmpty(),
+                "hostile archive must not yield entries, got: " + names);
+        assertThrows(IOException.class,
+                () -> loader.extractJar(hostile, "../ESCAPED_MARKER.txt",
+                        tempDir.resolve("out.jar")));
         assertFalse(Files.exists(tempDir.resolve("ESCAPED_MARKER.txt")),
                 "zip-slip: traversal entry escaped the archive sandbox");
-        assertFalse(Files.exists(escaped.getParent().resolve("..").resolve("ESCAPED_MARKER.txt")));
+        assertFalse(Files.exists(tempDir.resolve("out.jar")));
     }
 
     @Test

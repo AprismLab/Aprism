@@ -29,6 +29,9 @@ import java.util.logging.Logger;
  */
 public final class ExtensionLoader {
 
+    private static final Logger LOG =
+            Logger.getLogger(ExtensionLoader.class.getName());
+
     private static final String EXTENSION_MANIFEST = "aprism.extension.json";
 
     private final String aprismVersion;
@@ -208,12 +211,21 @@ public final class ExtensionLoader {
      */
     public List<String> listEmbeddedJarNames(Path aepFile) throws IOException {
         List<String> jars = new ArrayList<>();
+        // v26.8-Alpha.3 (QA-R F2): a hostile archive with traversal entry
+        // names (../) makes the JDK zip provider throw
+        // ProviderNotFoundException on open. Fail closed: treat as unreadable
+        // and return empty instead of crashing the caller.
         try (FileSystem fs = FileSystems.newFileSystem(aepFile, (ClassLoader) null)) {
             Path root = fs.getPath("/");
             try (var stream = Files.walk(root)) {
                 stream.filter(p -> p.toString().endsWith(".jar"))
                       .forEach(p -> jars.add(p.toString().startsWith("/") ? p.toString().substring(1) : p.toString()));
             }
+        } catch (java.nio.file.ProviderNotFoundException
+                | java.util.zip.ZipError e) {
+            LOG.warning("Extension archive unreadable (hostile or corrupt): "
+                    + aepFile + " - " + e.getClass().getSimpleName());
+            return List.of();
         }
         return jars;
     }
@@ -228,6 +240,12 @@ public final class ExtensionLoader {
      * @throws IOException if the entry cannot be read or written
      */
     public void extractJar(Path aepFile, String entryName, Path targetFile) throws IOException {
+        // v26.8-Alpha.3 (QA-R F2 defense in depth): reject traversal entry
+        // names before any path resolution.
+        if (entryName.contains("..") || entryName.contains("\\")) {
+            LOG.warning("Rejected hostile archive entry name: " + entryName);
+            throw new IOException("hostile entry name: " + entryName);
+        }
         try (FileSystem fs = FileSystems.newFileSystem(aepFile, (ClassLoader) null);
              InputStream is = Files.newInputStream(fs.getPath("/" + entryName))) {
             Files.copy(is, targetFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
