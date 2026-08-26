@@ -326,3 +326,10 @@
 {"at":1787667404203,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":282}
 {"at":1787667414580,"source":"http","transport":"http","requestId":"","type":"type","ok":true,"result":"ok","durationUs":6399}
 {"at":1787667446281,"source":"http","transport":"http","requestId":"","type":"screenshot","ok":true,"result":"ok","durationUs":304819}
+{"at":1787729362715,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":42407}
+{"at":1787729365777,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":352}
+{"at":1787729366880,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":49236}
+{"at":1787730200313,"source":"http","transport":"http","requestId":"","type":"key","ok":true,"result":"ok","durationUs":4974}
+{"at":1787730735309,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":52322}
+{"at":1787730738413,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":516}
+{"at":1787730739501,"source":"http","transport":"http","requestId":"","type":"click","ok":true,"result":"ok","durationUs":50972}

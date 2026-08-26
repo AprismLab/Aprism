@@ -130,7 +130,7 @@ public final class GameContentBindingInstaller {
             Object propertiesOut = stacks != null && content.maxStack() != 64
                     ? stacks.invoke(properties, content.maxStack())
                     : properties;
-            setIdOnProperties(handles, propertiesOut, content.id());
+            setIdOnProperties(handles, propertiesOut, content.id(), "ITEM");
             Constructor<?> ctor = handles.itemClass.getConstructor(propertiesClass);
             Object item = ctor.newInstance(propertiesOut);
             return register(handles, "item", content.id(), item);
@@ -149,11 +149,11 @@ public final class GameContentBindingInstaller {
      * reflectively from Registries.ITEM + Identifier.
      */
     private static void setIdOnProperties(RegistryHandles handles, Object properties,
-            ResourceKey key) {
+            ResourceKey key, String registryField) {
         try {
             ClassLoader loader = properties.getClass().getClassLoader();
             Class<?> registries = loader.loadClass("net.minecraft.core.registries.Registries");
-            Object itemRegistryKey = registries.getField("ITEM").get(null);
+            Object itemRegistryKey = registries.getField(registryField).get(null);
             Class<?> resourceKeyClass = loader.loadClass("net.minecraft.resources.ResourceKey");
             Object identifier = handles.identifiers().create(key.namespace(), key.name());
             Method create = resourceKeyClass.getMethod("create",
@@ -179,6 +179,7 @@ public final class GameContentBindingInstaller {
             if (properties == null) {
                 return new BindingResult("block", content.id(), false, "TARGET_UNRESOLVED");
             }
+            setIdOnProperties(handles, properties, content.id(), "BLOCK");
             Object block = handles.blockClass.getConstructor(propertiesClass)
                     .newInstance(properties);
             return register(handles, "block", content.id(), block);
