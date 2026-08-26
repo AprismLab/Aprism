@@ -60,7 +60,24 @@ public final class ManifestParser {
     public AprismManifest parse(InputStream stream) throws ManifestParseException {
         try {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            return AprismManifest.fromJson(json);
+            AprismManifest manifest = AprismManifest.fromJson(json);
+            // v26.8-Alpha.2 (QA-R F1): fail-closed identity validation in the
+            // parse path. A manifest without a usable id/version must never
+            // enter the load pipeline. Full SemVer/label checks remain in
+            // ManifestValidator for callers that opt into full validation.
+            List<String> identityErrors = new java.util.ArrayList<>();
+            if (manifest.id() == null || manifest.id().isBlank()) {
+                identityErrors.add("id is required");
+            }
+            if (manifest.version() == null || manifest.version().isBlank()) {
+                identityErrors.add("version is required");
+            }
+            if (!identityErrors.isEmpty()) {
+                throw new ManifestParseException(
+                        "manifest failed identity validation: "
+                                + String.join("; ", identityErrors));
+            }
+            return manifest;
         } catch (IOException e) {
             throw new ManifestParseException("Failed to read manifest stream", e);
         }
