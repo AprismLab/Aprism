@@ -46,6 +46,7 @@ public final class GameContentBindingInstaller {
 
     private final GameRegistries gameRegistries;
     private boolean remapProfile;
+    private OfficialMappings officialMappings;
 
     /**
      * Outcome of one bind attempt.
@@ -71,6 +72,22 @@ public final class GameContentBindingInstaller {
      */
     public void setRemapProfile(boolean remapProfile) {
         this.remapProfile = remapProfile;
+    }
+
+    /**
+     * Supplies Mojang official mappings (client.txt) enabling cross-mapped
+     * binding on REMAPPED profiles (DEC-PRE261 Option A, v26.8-Alpha.5).
+     */
+    public void setOfficialMappings(OfficialMappings mappings) {
+        this.officialMappings = mappings;
+    }
+
+    /** Translates an official target name to the runtime name when needed. */
+    private String rt(String officialName) {
+        if (remapProfile && officialMappings != null) {
+            return officialMappings.runtimeName(officialName);
+        }
+        return officialName;
     }
 
     /**
@@ -210,16 +227,16 @@ public final class GameContentBindingInstaller {
             ClassLoader loader = Thread.currentThread().getContextClassLoader() != null
                     ? Thread.currentThread().getContextClassLoader()
                     : getClass().getClassLoader();
-            Class<?> registries = loader.loadClass(BUILT_IN_REGISTRIES);
+            Class<?> registries = loader.loadClass(rt(BUILT_IN_REGISTRIES));
             Class<?> registryHelper = loader.loadClass(REGISTRY_HELPER);
-            Class<?> registryIface = loader.loadClass("net.minecraft.core.Registry");
-            Class<?> identifier = loader.loadClass(IDENTIFIER);
+            Class<?> registryIface = loader.loadClass(rt("net.minecraft.core.Registry"));
+            Class<?> identifier = loader.loadClass(rt(IDENTIFIER));
             Field itemField = registries.getField("ITEM");
             Field blockField = registries.getField("BLOCK");
             Object itemRegistry = itemField.get(null);
             Object blockRegistry = blockField.get(null);
-            Class<?> itemClass = loader.loadClass(MC_ITEM);
-            Class<?> blockClass = loader.loadClass(MC_BLOCK);
+            Class<?> itemClass = loader.loadClass(rt(MC_ITEM));
+            Class<?> blockClass = loader.loadClass(rt(MC_BLOCK));
             return new RegistryHandles(registryIface, registryHelper, itemRegistry,
                     blockRegistry, itemClass, blockClass,
                     IdentifierFactory.detect(identifier));
