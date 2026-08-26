@@ -78,13 +78,16 @@ public final class OfficialMappings {
                 if (arrow < 0) {
                     continue;
                 }
-                String officialPart = line.substring(arrow + 4);
-                if (officialPart.endsWith(":")) {
-                    officialPart = officialPart.substring(0,
-                            officialPart.length() - 1);
+                // v26.8-Alpha.7 fix: Mojang client.txt class lines are
+                // REVERSED vs standard ProGuard: "official -> obfuscated:".
+                // Key = LEFT (official), value = RIGHT (runtime obfuscated).
+                String officialPart = line.substring(0, arrow);
+                String obfPart = line.substring(arrow + 4);
+                if (obfPart.endsWith(":")) {
+                    obfPart = obfPart.substring(0, obfPart.length() - 1);
                 }
                 // Keep the LAST occurrence (inner-class lines may repeat).
-                classes.put(officialPart, line.substring(0, arrow));
+                classes.put(officialPart, obfPart);
                 lastOfficialClass = officialPart;
             }
         }

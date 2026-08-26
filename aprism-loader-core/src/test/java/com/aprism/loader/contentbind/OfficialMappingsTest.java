@@ -21,11 +21,11 @@ class OfficialMappingsTest {
 
     private static final String CLIENT_TXT = """
             # comment line should be skipped
-            abc.def -> net.minecraft.core.registries.BuiltInRegistries:
+            net.minecraft.core.registries.BuiltInRegistries -> abc.def:
                 java.lang.String ITEM -> a
-            ghi -> net.minecraft.world.item.Item:
+            net.minecraft.world.item.Item -> ghi:
                 void method_1(net.minecraft.world.item.ItemStack)
-            skip.Me -> skip.Me:
+            skip.Me -> skip.Other:
             """;
 
     @Test
