@@ -1399,7 +1399,18 @@ public final class AprismRuntime {
         } catch (Throwable t) {
             LOG.warning("Key binding failed: " + t);
         }
+        // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        // v26.8-Alpha.3: when the launcher does not pass a side (mdl does
+        // not), infer it - a JE launch whose client classes are resolvable
+        // IS a client distribution, and the CLIENT phase must fire for
+        // foreign-loader mods whose setup awaits it (JEI's client startup
+        // under the NeoForge path). Real NeoForge fires client setup
+        // pre-title as well, so dispatching here matches mod expectations.
         AprismPhase sidePhase = sidePhaseFor(side);
+        if (sidePhase == null && side == null && isClientDistribution()) {
+            sidePhase = AprismPhase.CLIENT;
+            LOG.info("Side inferred from client classes: dispatching CLIENT phase");
+        }
         if (sidePhase != null) {
             LOG.info("Dispatching side phase: " + sidePhase);
             invokeEntrypoints(sidePhase);
@@ -1424,6 +1435,23 @@ public final class AprismRuntime {
             case "server" -> AprismPhase.SERVER;
             default -> null;
         };
+    }
+
+    // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+    /**
+     * @return true when the running JVM hosts the Minecraft JE client
+     *         (client classes resolvable on the classpath). Dedicated
+     *         servers and non-MC hosts answer false, keeping the side-phase
+     *         inference fail-closed.
+     */
+    private static boolean isClientDistribution() {
+        try {
+            Class.forName("net.minecraft.client.Minecraft", false,
+                    AprismRuntime.class.getClassLoader());
+            return true;
+        } catch (Throwable absent) {
+            return false;
+        }
     }
 
     /**
