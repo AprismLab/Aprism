@@ -11,8 +11,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for {@link OfficialMappings}: ProGuard client.txt parsing and
- * official-to-runtime class-name resolution (DEC-PRE261 Option A
- * foundation).
+ * official-to-runtime class/field-name resolution (DEC-PRE261 Option A
+ * foundation + member fields, v26.8-Alpha.6).
  */
 class OfficialMappingsTest {
 
@@ -22,9 +22,9 @@ class OfficialMappingsTest {
     private static final String CLIENT_TXT = """
             # comment line should be skipped
             abc.def -> net.minecraft.core.registries.BuiltInRegistries:
-              field a -> ITEM
+                java.lang.String ITEM -> a
             ghi -> net.minecraft.world.item.Item:
-              method a(net.minecraft.world.item.ItemStack) -> method_1
+                void method_1(net.minecraft.world.item.ItemStack)
             skip.Me -> skip.Me:
             """;
 
@@ -55,6 +55,19 @@ class OfficialMappingsTest {
     void absentFileLoadsAsNull() throws Exception {
         assertNull(OfficialMappings.load(tempDir.resolve("nope.txt")));
         assertNull(OfficialMappings.load(null));
+    }
+
+    @Test
+    void resolvesStaticFieldNamesWithinClasses() throws Exception {
+        Path f = tempDir.resolve("client.txt");
+        Files.writeString(f, CLIENT_TXT);
+        OfficialMappings m = OfficialMappings.load(f);
+
+        assertEquals("a", m.runtimeFieldName(
+                "net.minecraft.core.registries.BuiltInRegistries", "ITEM"));
+        // Unmapped class/field passes through unchanged.
+        assertEquals("ITEM", m.runtimeFieldName(
+                "net.minecraft.world.item.Item", "ITEM"));
     }
 
     @Test

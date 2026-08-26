@@ -90,6 +90,14 @@ public final class GameContentBindingInstaller {
         return officialName;
     }
 
+    /** Translates an official static field name when needed (v26.8-Alpha.6). */
+    private String rtFieldName(String officialClass, String officialField) {
+        if (remapProfile && officialMappings != null) {
+            return officialMappings.runtimeFieldName(officialClass, officialField);
+        }
+        return officialField;
+    }
+
     /**
      * Binds every registered item and block into the real registries.
      * Never throws; failures are isolated per entry.
@@ -228,11 +236,14 @@ public final class GameContentBindingInstaller {
                     ? Thread.currentThread().getContextClassLoader()
                     : getClass().getClassLoader();
             Class<?> registries = loader.loadClass(rt(BUILT_IN_REGISTRIES));
-            Class<?> registryHelper = loader.loadClass(REGISTRY_HELPER);
+            Class<?> registryHelper = loader.loadClass(rt(REGISTRY_HELPER));
             Class<?> registryIface = loader.loadClass(rt("net.minecraft.core.Registry"));
             Class<?> identifier = loader.loadClass(rt(IDENTIFIER));
-            Field itemField = registries.getField("ITEM");
-            Field blockField = registries.getField("BLOCK");
+            // v26.8-Alpha.6: static field names translate too (ITEM/BLOCK).
+            String itemFieldName = rtFieldName(BUILT_IN_REGISTRIES, "ITEM");
+            String blockFieldName = rtFieldName(BUILT_IN_REGISTRIES, "BLOCK");
+            Field itemField = registries.getField(itemFieldName);
+            Field blockField = registries.getField(blockFieldName);
             Object itemRegistry = itemField.get(null);
             Object blockRegistry = blockField.get(null);
             Class<?> itemClass = loader.loadClass(rt(MC_ITEM));

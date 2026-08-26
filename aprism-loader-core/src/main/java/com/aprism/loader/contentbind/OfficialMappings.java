@@ -12,17 +12,15 @@ import java.util.logging.Logger;
 
 /**
  * Loads Mojang's official {@code client.txt} ProGuard mapping and resolves
- * official Mojang class names to their runtime (obfuscated) names
- * (v26.8-Alpha.5, DEC-PRE261 Option A foundation).
+ * official Mojang class and static-field names to their runtime (obfuscated)
+ * names (v26.8-Alpha.5/6, DEC-PRE261 Option A).
  *
  * <p>On the REMAPPED profile the runtime classes carry obfuscated names.
  * Binding targets written against official names must therefore be
  * translated: {@code official --[client.txt reverse]--> obfuscated
- * (runtime)}. Member mappings are skipped; classes suffice for binder
- * targets.
- *
- * <p>File format (ProGuard): class lines are
- * {@code obf.qual.Name -> official.qual.Name:}; member lines are indented.
+ * (runtime)}. Class lines are {@code obf.qual.Name -> official.qual.Name:};
+ * indented member lines are {@code type name -> obf} (fields) or
+ * {@code sig -> obf} (methods, skipped here).
  *
  * @author BlockConnect@StarsailsClover
  */
@@ -32,9 +30,12 @@ public final class OfficialMappings {
     private static final Logger LOG = Logger.getLogger("aprism.contentbind");
 
     private final Map<String, String> officialToRuntime;
+    private final Map<String, Map<String, String>> fieldsByOfficialClass;
 
-    private OfficialMappings(Map<String, String> officialToRuntime) {
+    private OfficialMappings(Map<String, String> officialToRuntime,
+            Map<String, Map<String, String>> fieldsByOfficialClass) {
         this.officialToRuntime = officialToRuntime;
+        this.fieldsByOfficialClass = fieldsByOfficialClass;
     }
 
     /**
@@ -48,13 +49,22 @@ public final class OfficialMappings {
         if (clientTxt == null || !Files.isRegularFile(clientTxt)) {
             return null;
         }
-        Map<String, String> map = new HashMap<>(30_000);
+        Map<String, String> classes = new HashMap<>(30_000);
+        Map<String, Map<String, String>> fields = new HashMap<>();
+        String lastOfficialClass = null;
         try (BufferedReader br = Files.newBufferedReader(clientTxt,
                 StandardCharsets.UTF_8)) {
             String line;
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty() || line.startsWith(" ") || line.startsWith("#")) {
-                    continue; // members/comments skipped; classes only
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
+                if (line.startsWith(" ")) {
+                    // Member line under the last class line.
+                    if (lastOfficialClass != null && !line.contains("(")) {
+                        parseFieldLine(line, lastOfficialClass, fields);
+                    }
+                    continue;
                 }
                 int arrow = line.indexOf(" -> ");
                 if (arrow < 0) {
@@ -66,12 +76,31 @@ public final class OfficialMappings {
                             officialPart.length() - 1);
                 }
                 // Keep the LAST occurrence (inner-class lines may repeat).
-                map.put(officialPart, line.substring(0, arrow));
+                classes.put(officialPart, line.substring(0, arrow));
+                lastOfficialClass = officialPart;
             }
         }
-        int size = map.size();
-        LOG.info("OfficialMappings loaded: " + size + " class entries");
-        return new OfficialMappings(map);
+        int size = classes.size();
+        LOG.info("OfficialMappings loaded: " + size + " classes, "
+                + fields.values().stream().mapToInt(Map::size).sum()
+                + " fields");
+        return new OfficialMappings(classes, fields);
+    }
+
+    private static void parseFieldLine(String line, String officialClass,
+            Map<String, Map<String, String>> fields) {
+        int arrow = line.indexOf(" -> ");
+        if (arrow < 0) {
+            return;
+        }
+        String officialField = line.substring(0, arrow).trim();
+        int sp = officialField.lastIndexOf(' ');
+        if (sp > 0) {
+            officialField = officialField.substring(sp + 1);
+        }
+        String obfField = line.substring(arrow + 4).trim();
+        fields.computeIfAbsent(officialClass, k -> new HashMap<>())
+                .put(officialField, obfField);
     }
 
     /**
@@ -83,6 +112,22 @@ public final class OfficialMappings {
      */
     public String runtimeName(String officialName) {
         return officialToRuntime.getOrDefault(officialName, officialName);
+    }
+
+    /**
+     * Resolves an official static field name within an official class to its
+     * runtime name. Returns the input unchanged when unmapped.
+     *
+     * @param officialClassName the official class name
+     * @param officialFieldName e.g. {@code ITEM}
+     * @return the runtime field name
+     */
+    public String runtimeFieldName(String officialClassName,
+            String officialFieldName) {
+        Map<String, String> fields =
+                fieldsByOfficialClass.get(officialClassName);
+        return fields == null ? officialFieldName
+                : fields.getOrDefault(officialFieldName, officialFieldName);
     }
 
     /**
