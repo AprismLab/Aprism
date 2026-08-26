@@ -71,6 +71,21 @@ class OfficialMappingsTest {
     }
 
     @Test
+    void resolvesMethodNamesWithinClasses() throws Exception {
+        Path f = tempDir.resolve("client.txt");
+        Files.writeString(f, CLIENT_TXT);
+        OfficialMappings m = OfficialMappings.load(f);
+
+        // Method lines in the fixture carry no return type in our simplified
+        // probe: "void method_1(...)" -> official name "method_1" maps to obf.
+        assertEquals("a", m.runtimeFieldName(
+                "net.minecraft.core.registries.BuiltInRegistries", "ITEM"));
+        // Unmapped method passes through.
+        assertEquals("register", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "register"));
+    }
+
+    @Test
     void remapGateStillRefusesWithoutMappings() {
         // Without official mappings, REMAPPED profiles keep refusing.
         var reg = new com.aprism.loader.registry.GameRegistries();

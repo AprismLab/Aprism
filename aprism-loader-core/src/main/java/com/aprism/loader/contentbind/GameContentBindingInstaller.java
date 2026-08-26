@@ -99,6 +99,18 @@ public final class GameContentBindingInstaller {
     }
 
     /**
+     * Translates an official method name when needed (v26.8-Alpha.7). On
+     * non-remapped profiles the name passes through unchanged.
+     */
+    private String rtMethodName(RegistryHandles handles, String officialClass,
+            String officialMethod) {
+        if (remapProfile && officialMappings != null) {
+            return officialMappings.runtimeMethodName(officialClass, officialMethod);
+        }
+        return officialMethod;
+    }
+
+    /**
      * Binds every registered item and block into the real registries.
      * Never throws; failures are isolated per entry.
      *
@@ -151,7 +163,9 @@ public final class GameContentBindingInstaller {
                     .loadClass(MC_ITEM_PROPERTIES);
             Object properties = propertiesClass.getConstructor().newInstance();
             Method stacks = findNoArgReturningMethod(propertiesClass,
-                    new String[] {"stacksTo", "maxCount", "maxStackSize"});
+                    new String[] {rtMethodName(handles, MC_ITEM_PROPERTIES, "stacksTo"),
+                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxCount"),
+                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxStackSize")});
             Object propertiesOut = stacks != null && content.maxStack() != 64
                     ? stacks.invoke(properties, content.maxStack())
                     : properties;
@@ -220,7 +234,8 @@ public final class GameContentBindingInstaller {
             IdentifierFactory ids = handles.identifiers();
             Object identifier = ids.create(key.namespace(), key.name());
             Method register = handles.registryHelper().getMethod(
-                    "register", handles.registryClass(), ids.type(), Object.class);
+                    rtMethodName(handles, "net.minecraft.core.Registry", "register"),
+                    handles.registryClass(), ids.type(), Object.class);
             register.setAccessible(true);
             register.invoke(null, handles.registryFor(kind), identifier, value);
             return new BindingResult(kind, key, true, null);
