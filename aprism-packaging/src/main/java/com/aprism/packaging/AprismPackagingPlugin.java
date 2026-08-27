@@ -74,6 +74,11 @@ public final class AprismPackagingPlugin implements Plugin<Project> {
         project.getTasks().register("packageAep", PackageAepTask.class, task -> {
             task.setDescription("Assembles a .aep Aprism extension archive.");
             task.setGroup("aprism");
+            task.setManifestFile(project.file(ext.getManifestFile()));
+            if (ext.getEditorManifestFile() != null
+                    && !ext.getEditorManifestFile().isBlank()) {
+                task.setEditorManifestFile(project.file(ext.getEditorManifestFile()));
+            }
         });
     }
 }

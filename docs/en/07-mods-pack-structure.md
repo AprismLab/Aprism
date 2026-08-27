@@ -528,6 +528,11 @@ Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep   (ZIP container)
 | `depends` | no | Other extensions this one depends on |
 | `aprismwarp.editor.json` | no | Declarative AprismWarp block catalog; read by AprismWarp only, never executed by Aprism |
 
+The Gradle packaging plugin accepts the optional editor catalog through
+`aprismPackaging.editorManifestFile`. It is copied to the AEP root as
+`aprismwarp.editor.json`; the runtime extension loader ignores this metadata,
+while AprismWarp reads it without loading the extension jar.
+
 ### 12.6 Placement
 
 | Edition | Directory | Notes |

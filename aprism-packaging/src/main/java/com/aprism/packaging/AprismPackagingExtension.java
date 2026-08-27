@@ -15,6 +15,7 @@ import java.util.List;
 public class AprismPackagingExtension {
 
     private String manifestFile = "aprism.manifest.json";
+    private String editorManifestFile;
     private String mainJar;
     private String extraResources = "src/main/resources-shared";
     private String mixinConfigs = "src/main/mixins";
@@ -37,6 +38,20 @@ public class AprismPackagingExtension {
      */
     public void setManifestFile(String manifestFile) {
         this.manifestFile = manifestFile;
+    }
+
+    /**
+     * @return optional AprismWarp editor capability manifest path
+     */
+    public String getEditorManifestFile() {
+        return editorManifestFile;
+    }
+
+    /**
+     * @param editorManifestFile optional {@code aprismwarp.editor.json} path
+     */
+    public void setEditorManifestFile(String editorManifestFile) {
+        this.editorManifestFile = editorManifestFile;
     }
 
     /**
