@@ -508,6 +508,7 @@ Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep   (ZIP container)
 +-- lib/                                        (optional, bundled dependencies)
     +-- fabric-loader-0.16.14.jar
     +-- sponge-mixin-0.15.7.jar
++-- aprismwarp.editor.json                      (OPTIONAL, declarative block catalog)
 ```
 
 ### 12.5 Extension manifest (aprism.extension.json)
@@ -525,6 +526,7 @@ Fabric-Support-A[26.0,27.0)-Fa[0.16,0.17)-JE-1.21.4.aep   (ZIP container)
 | `entrypoint` | yes | Extension entrypoint class (JE) or native symbol (BE) |
 | `provides` | no | Capability declarations this extension registers |
 | `depends` | no | Other extensions this one depends on |
+| `aprismwarp.editor.json` | no | Declarative AprismWarp block catalog; read by AprismWarp only, never executed by Aprism |
 
 ### 12.6 Placement
 
