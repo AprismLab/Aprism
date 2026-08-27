@@ -94,6 +94,13 @@ class AprismAgentTest {
     }
 
     @Test
+    void parseArgsReadsOfficialMappingsPath() {
+        assertThat(AprismAgent.parseArgs(
+                "officialMappings=C:/mappings/client.txt"))
+                .containsEntry("officialMappings", "C:/mappings/client.txt");
+    }
+
+    @Test
     void premainWithGameRootLoadsModsAndInvokesLifecycle() throws Exception {
         writeAje(gameRoot.resolve("mods").resolve("agenttest.aje"), "agenttest", "1.0.0",
                 "com.aprism.loader.testmods.RecordingMod");

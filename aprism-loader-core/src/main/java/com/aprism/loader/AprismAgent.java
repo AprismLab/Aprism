@@ -94,6 +94,10 @@ public final class AprismAgent {
             if (mappingsArg != null && !mappingsArg.isBlank()) {
                 runtime.loadIntermediaryMappings(Path.of(mappingsArg));
             }
+            String officialMappingsArg = kv.get("officialMappings");
+            if (officialMappingsArg != null && !officialMappingsArg.isBlank()) {
+                runtime.loadOfficialMappings(Path.of(officialMappingsArg));
+            }
 
             // Production trigger: when gameRoot is supplied, run the two-phase
             // load and the common lifecycle synchronously inside premain. The

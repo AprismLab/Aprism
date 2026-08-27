@@ -38,6 +38,7 @@ public final class GameContentBindingInstaller {
     static final String BUILT_IN_REGISTRIES = "net.minecraft.core.registries.BuiltInRegistries";
     static final String REGISTRY_HELPER = "net.minecraft.core.Registry";
     static final String IDENTIFIER = "net.minecraft.resources.Identifier";
+    static final String LEGACY_IDENTIFIER = "net.minecraft.resources.ResourceLocation";
     static final String MC_ITEM = "net.minecraft.world.item.Item";
     static final String MC_ITEM_PROPERTIES = "net.minecraft.world.item.Item$Properties";
     static final String MC_BLOCK = "net.minecraft.world.level.block.Block";
@@ -253,7 +254,7 @@ public final class GameContentBindingInstaller {
             Class<?> registries = loader.loadClass(rt(BUILT_IN_REGISTRIES));
             Class<?> registryHelper = loader.loadClass(rt(REGISTRY_HELPER));
             Class<?> registryIface = loader.loadClass(rt("net.minecraft.core.Registry"));
-            Class<?> identifier = loader.loadClass(rt(IDENTIFIER));
+            Class<?> identifier = loadIdentifier(loader);
             // v26.8-Alpha.6: static field names translate too (ITEM/BLOCK).
             String itemFieldName = rtFieldName(BUILT_IN_REGISTRIES, "ITEM");
             String blockFieldName = rtFieldName(BUILT_IN_REGISTRIES, "BLOCK");
@@ -271,6 +272,15 @@ public final class GameContentBindingInstaller {
                     + e.getClass().getName() + ": " + e.getMessage()
                     + (e.getCause() != null ? " caused by " + e.getCause() : ""));
             return null;
+        }
+    }
+
+    /** Supports the 1.21.x ResourceLocation name and the 26.x Identifier name. */
+    private Class<?> loadIdentifier(ClassLoader loader) throws ClassNotFoundException {
+        try {
+            return loader.loadClass(rt(IDENTIFIER));
+        } catch (ClassNotFoundException first) {
+            return loader.loadClass(rt(LEGACY_IDENTIFIER));
         }
     }
 

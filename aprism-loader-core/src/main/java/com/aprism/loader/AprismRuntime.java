@@ -70,6 +70,7 @@ import com.aprism.loader.status.StatusPublisher;
 import com.aprism.loader.contentbind.ContentBindingRunner;
 import com.aprism.loader.contentbind.BrigadierCommandBinder;
 import com.aprism.loader.contentbind.KeyInputBindingInstaller;
+import com.aprism.loader.contentbind.OfficialMappings;
 import com.aprism.loader.logging.AprismLogging;
 import com.aprism.loader.logging.AprismLogger;
 import com.aprism.loader.logging.ConsoleSink;
@@ -182,6 +183,8 @@ public final class AprismRuntime {
     /** Resolved version-line characteristics for the running Minecraft version. */
     private VersionLineEntry versionLineEntry;
     private BytecodeRemapper bytecodeRemapper;
+    /** Mojang official-to-runtime mappings for REMAPPED targets. */
+    private OfficialMappings officialMappings;
     private Path gameRoot;
 
     private AprismRuntime() {
@@ -341,6 +344,36 @@ public final class AprismRuntime {
                 + mappings.classCount() + " classes, "
                 + mappings.methodCount() + " methods, "
                 + mappings.fieldCount() + " fields");
+    }
+
+    /**
+     * Loads Mojang official client mappings for reflective binding on a
+     * REMAPPED profile. This is independent of the intermediary-to-official
+     * bytecode remapper used by mod class loading.
+     *
+     * @param clientTxt Mojang client.txt mapping file
+     * @throws IOException if the mapping file cannot be read
+     */
+    public void loadOfficialMappings(Path clientTxt) throws IOException {
+        ensureInitialized();
+        if (mcProfile != McProfile.REMAPPED) {
+            LOG.info("Profile is NO_REMAP for Minecraft " + mcVersion
+                    + "; official mappings ignored");
+            return;
+        }
+        this.officialMappings = OfficialMappings.load(clientTxt);
+        if (officialMappings == null) {
+            throw new IOException("Official mappings file not found: " + clientTxt);
+        }
+        LOG.info("Loaded official mappings from " + clientTxt + ": "
+                + officialMappings.size() + " classes");
+    }
+
+    /**
+     * @return the loaded Mojang mappings, or null when no mapping was supplied
+     */
+    public OfficialMappings getOfficialMappings() {
+        return officialMappings;
     }
 
     /**
@@ -1358,7 +1391,8 @@ public final class AprismRuntime {
         // still writable - direct bind, fail-closed per entry.
         if (!"BE".equalsIgnoreCase(mcEdit)) {
             try {
-                ContentBindingRunner.bindNow(gameRegistries, mcProfile == McProfile.REMAPPED);
+                ContentBindingRunner.bindNow(gameRegistries,
+                        mcProfile == McProfile.REMAPPED, officialMappings);
             } catch (Throwable t) {
                 LOG.warning("Content binding failed: " + t);
             }
@@ -1940,6 +1974,7 @@ public final class AprismRuntime {
         mcProfile = null;
         versionLineEntry = null;
         bytecodeRemapper = null;
+        officialMappings = null;
         gameRoot = null;
         mods.clear();
         bedrockMods.clear();

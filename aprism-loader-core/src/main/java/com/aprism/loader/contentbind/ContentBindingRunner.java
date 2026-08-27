@@ -69,9 +69,25 @@ public final class ContentBindingRunner {
      */
     public static List<GameContentBindingInstaller.BindingResult> bindNow(
             GameRegistries gameRegistries, boolean remapProfile) {
+        return bindNow(gameRegistries, remapProfile, null);
+    }
+
+    /**
+     * Performs binding with optional official-name mappings for REMAPPED
+     * profiles.
+     *
+     * @param gameRegistries content registries
+     * @param remapProfile whether the runtime selected REMAPPED
+     * @param officialMappings Mojang client mappings, or null
+     * @return per-entry results
+     */
+    public static List<GameContentBindingInstaller.BindingResult> bindNow(
+            GameRegistries gameRegistries, boolean remapProfile,
+            OfficialMappings officialMappings) {
         GameContentBindingInstaller installer =
                 new GameContentBindingInstaller(gameRegistries);
         installer.setRemapProfile(remapProfile);
+        installer.setOfficialMappings(officialMappings);
         List<GameContentBindingInstaller.BindingResult> results = installer.bindAll();
         long ok = results.stream().filter(
                 GameContentBindingInstaller.BindingResult::ok).count();

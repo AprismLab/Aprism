@@ -1333,3 +1333,14 @@ obfuscated names needs Mojang official mappings chained through the
 intermediary table - a per-version asset plus resolution workstream that
 deserves its own line (v26.8 candidate) rather than a rushed add-on.
 Priority targets remain 26.x-first per the internal version table.
+
+## Real Pre-26.1 Mapping Assets (v26.8-Alpha.8)
+
+The REMAPPED profile now accepts two distinct agent inputs: mappings points to
+the Fabric Intermediary tiny-v2 file for bytecode remapping; officialMappings
+points to Mojang client.txt for reflective official-to-runtime translation.
+They are intentionally separate. The runtime stores the official mapping and
+passes it to content binding; shutdown clears it. Real 1.21.4 client.txt
+verification parsed 8,857 classes in 312 ms and resolved BuiltInRegistries
+to mb, ITEM to g, BLOCK to e, Registry.register to a, and Item.Properties
+stacksTo to a. The official name Identifier passed through as expected.
