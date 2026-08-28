@@ -553,6 +553,18 @@ Extensions always load before mods. The Aprism core:
 4. Registers capabilities (`provides`).
 5. Only then begins the mod scan (Phase 2, Section 6.3).
 
+## 12.9 v26.9 changes
+
+- Optional root-level `aprismwarp.editor.json` is now part of the
+  packaging input. The catalog is declarative; Aprism runtime ignores it,
+  AprismWarp reads it without loading the extension jar. Legacy AEPs without
+  the catalog remain installable.
+- Extension manifest gains an optional `version` (SemVer) field used for
+  `depends` range matching. Omitting it preserves v26.8 behavior.
+- AprismPackagingExtension exposes `editorManifestFile`; AprismPackagingPlugin
+  wires it through to every `packageAep` task. See docs/release-notes/v26.9.md
+  for the full change set.
+
 ## 13. References
 
 - Document 1: Aprism Loader Overall Architecture Design
