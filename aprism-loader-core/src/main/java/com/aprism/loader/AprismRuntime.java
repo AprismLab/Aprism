@@ -354,6 +354,7 @@ public final class AprismRuntime {
      * @param clientTxt Mojang client.txt mapping file
      * @throws IOException if the mapping file cannot be read
      */
+    //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
     public void loadOfficialMappings(Path clientTxt) throws IOException {
         ensureInitialized();
         if (mcProfile != McProfile.REMAPPED) {
@@ -1974,6 +1975,7 @@ public final class AprismRuntime {
         mcProfile = null;
         versionLineEntry = null;
         bytecodeRemapper = null;
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
         officialMappings = null;
         gameRoot = null;
         mods.clear();

@@ -1344,3 +1344,5 @@ passes it to content binding; shutdown clears it. Real 1.21.4 client.txt
 verification parsed 8,857 classes in 312 ms and resolved BuiltInRegistries
 to mb, ITEM to g, BLOCK to e, Registry.register to a, and Item.Properties
 stacksTo to a. The official name Identifier passed through as expected.
+
+<!-- GitHub@NDBlockConnect | BlockConnect@StarsailsClover -->

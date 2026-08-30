@@ -98,6 +98,7 @@ public final class AprismAgent {
             if (officialMappingsArg != null && !officialMappingsArg.isBlank()) {
                 runtime.loadOfficialMappings(Path.of(officialMappingsArg));
             }
+            //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
             // Production trigger: when gameRoot is supplied, run the two-phase
             // load and the common lifecycle synchronously inside premain. The

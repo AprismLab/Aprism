@@ -123,6 +123,7 @@ public final class GameContentBindingInstaller {
                 .map(k -> gameRegistries.items().get(k).orElseThrow()).toList();
         List<BlockContent> blocks = gameRegistries.blocks().keys().stream()
                 .map(k -> gameRegistries.blocks().get(k).orElseThrow()).toList();
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
         if (remapProfile && officialMappings == null) {
             for (ItemContent c : items) {
                 results.add(new BindingResult("item", c.id(), false, "PROFILE_UNSUPPORTED"));

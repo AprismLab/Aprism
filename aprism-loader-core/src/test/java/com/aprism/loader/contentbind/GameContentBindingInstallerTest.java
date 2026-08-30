@@ -73,6 +73,7 @@ class GameContentBindingInstallerTest {
         assertEquals("PROFILE_UNSUPPORTED", results.get(0).refusal());
     }
 
+    //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
     @Test
     void remapProfileWithOfficialMappingsNoLongerGatesOut() throws Exception {
         // DEC-PRE261 Option A: when both remapProfile and official mappings are

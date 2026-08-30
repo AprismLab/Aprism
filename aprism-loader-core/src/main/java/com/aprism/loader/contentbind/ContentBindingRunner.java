@@ -72,6 +72,7 @@ public final class ContentBindingRunner {
         return bindNow(gameRegistries, remapProfile, null);
     }
 
+    //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
     /**
      * Performs binding with optional official-name mappings for REMAPPED
      * profiles.
