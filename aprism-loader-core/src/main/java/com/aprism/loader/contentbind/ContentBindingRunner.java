@@ -89,11 +89,8 @@ public final class ContentBindingRunner {
                 new GameContentBindingInstaller(gameRegistries);
         installer.setRemapProfile(remapProfile);
         installer.setOfficialMappings(officialMappings);
-        List<GameContentBindingInstaller.BindingResult> results = installer.bindAll();
-        long ok = results.stream().filter(
-                GameContentBindingInstaller.BindingResult::ok).count();
-        LOG.info("Content binding: " + ok + "/" + results.size()
-                + " unit(s) bound to the live registries");
-        return results;
+        // The installer logs the bound-count line itself (v26.8-Alpha.9:
+        // removed the duplicate that printed every result line twice).
+        return installer.bindAll();
     }
 }
