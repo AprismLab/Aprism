@@ -2,6 +2,7 @@ package com.aprism.loader.contentbind;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -60,7 +61,7 @@ class GameContentBindingInstallerTest {
     }
 
     @Test
-    void remapProfileRefusesEverything() {
+    void remapProfileRefusesEverythingWhenNoOfficialMappings() {
         registries.items().register(ResourceKey.parse("aprism:x"),
                 new ItemContent(ResourceKey.parse("aprism:x"), 1));
         GameContentBindingInstaller installer = new GameContentBindingInstaller(registries);
@@ -70,6 +71,33 @@ class GameContentBindingInstallerTest {
         assertEquals(1, results.size());
         assertFalse(results.get(0).ok());
         assertEquals("PROFILE_UNSUPPORTED", results.get(0).refusal());
+    }
+
+    @Test
+    void remapProfileWithOfficialMappingsNoLongerGatesOut() throws Exception {
+        // DEC-PRE261 Option A: when both remapProfile and official mappings are
+        // supplied, the binder proceeds to attempt the cross-mapped binding
+        // path. The gate's PROFILE_UNSUPPORTED message must no longer appear.
+        registries.items().register(ResourceKey.parse("aprism:x"),
+                new ItemContent(ResourceKey.parse("aprism:x"), 1));
+        Path stubTxt = java.nio.file.Files.createTempFile("aprism-stub-", "-client.txt");
+        try {
+            java.nio.file.Files.writeString(stubTxt, "");
+            OfficialMappings stub = OfficialMappings.load(stubTxt);
+            GameContentBindingInstaller installer = new GameContentBindingInstaller(registries);
+            installer.setRemapProfile(true);
+            installer.setOfficialMappings(stub);
+            List<BindingResult> results = installer.bindAll();
+            assertEquals(1, results.size());
+            // The gate opens; the failure (if any) now reflects the runtime
+            // side, which in this stub harness is simply no binding target
+            // found. What we assert: the gate message is no longer returned.
+            if (!results.get(0).ok()) {
+                assertNotEquals("PROFILE_UNSUPPORTED", results.get(0).refusal());
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(stubTxt);
+        }
     }
 
     private static net.minecraft.resources.Identifier idFor(String path) {
