@@ -220,7 +220,7 @@ public final class GameContentBindingInstaller {
     private BindingResult bindBlock(RegistryHandles handles, BlockContent content) {
         try {
             Class<?> propertiesClass = handles.blockClass.getClassLoader()
-                    .loadClass(MC_BLOCK_PROPERTIES);
+                    .loadClass(rt(MC_BLOCK_PROPERTIES));
             Object properties = noArgInstance(propertiesClass);
             if (properties == null) {
                 properties = invokeStaticFactory(propertiesClass,

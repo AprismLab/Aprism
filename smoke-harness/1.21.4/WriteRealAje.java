@@ -52,10 +52,39 @@ public class WriteRealAje {
                 "(Lcom/aprism/api/registry/ResourceKey;Ljava/lang/Object;)"
                         + "Ljava/lang/Object;", true);
         mv.visitInsn(Opcodes.POP);
+        // context.getBlockRegistry().register(ResourceKey.parse(
+        //         "aprism:realsmoke_block"), new BlockContent(key, 1.0f, 1.0f, 0));
+        mv.visitVarInsn(Opcodes.ALOAD, 1);
+        mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/aprism/api/AprismContext",
+                "getBlockRegistry",
+                "()Lcom/aprism/api/registry/TypedRegistry;", true);
+        mv.visitVarInsn(Opcodes.ASTORE, 2);
+        mv.visitLdcInsn("aprism:realsmoke_block");
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                "com/aprism/api/registry/ResourceKey", "parse",
+                "(Ljava/lang/String;)Lcom/aprism/api/registry/ResourceKey;",
+                false);
+        mv.visitVarInsn(Opcodes.ASTORE, 3);
+        mv.visitVarInsn(Opcodes.ALOAD, 2);
+        mv.visitVarInsn(Opcodes.ALOAD, 3);
+        mv.visitTypeInsn(Opcodes.NEW, "com/aprism/api/registry/BlockContent");
+        mv.visitInsn(Opcodes.DUP);
+        mv.visitVarInsn(Opcodes.ALOAD, 3);
+        mv.visitLdcInsn(1.0f);
+        mv.visitLdcInsn(1.0f);
+        mv.visitIntInsn(Opcodes.BIPUSH, 0);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL,
+                "com/aprism/api/registry/BlockContent", "<init>",
+                "(Lcom/aprism/api/registry/ResourceKey;FFI)V", false);
+        mv.visitMethodInsn(Opcodes.INVOKEINTERFACE,
+                "com/aprism/api/registry/TypedRegistry", "register",
+                "(Lcom/aprism/api/registry/ResourceKey;Ljava/lang/Object;)"
+                        + "Ljava/lang/Object;", true);
+        mv.visitInsn(Opcodes.POP);
         mv.visitVarInsn(Opcodes.ALOAD, 1);
         mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/aprism/api/AprismContext", "getLogger",
                 "()Ljava/util/logging/Logger;", true);
-        mv.visitLdcInsn("[RealSmokeMod] onInitialize reached (remap path active); item registered");
+        mv.visitLdcInsn("[RealSmokeMod] onInitialize reached (remap path active); item+block registered");
         mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/logging/Logger", "info",
                 "(Ljava/lang/String;)V", false);
         mv.visitInsn(Opcodes.RETURN);
