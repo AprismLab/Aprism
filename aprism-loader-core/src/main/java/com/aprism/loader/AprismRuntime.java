@@ -368,7 +368,17 @@ public final class AprismRuntime {
         }
         LOG.info("Loaded official mappings from " + clientTxt + ": "
                 + officialMappings.size() + " classes");
+        // v26.8-Alpha.9: translate the bootstrap gate probe into runtime
+        // names so the deferral also works on obfuscated pre-26.1 profiles.
+        GameBootstrapGate.setProbeNames(
+                officialMappings.runtimeName(GameBootstrapGate.VANILLA_BOOTSTRAP_CLASS),
+                officialMappings.runtimeMethodName(
+                        GameBootstrapGate.VANILLA_BOOTSTRAP_CLASS,
+                        GameBootstrapGate.VANILLA_CHECK_METHOD));
+        LOG.info("Bootstrap gate probe translated to "
+                + GameBootstrapGate.probeClassName());
     }
+    //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
     /**
      * @return the loaded Mojang mappings, or null when no mapping was supplied

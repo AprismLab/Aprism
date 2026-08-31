@@ -112,6 +112,19 @@ public final class GameContentBindingInstaller {
     }
 
     /**
+     * Overload-exact method translation (v26.8-Alpha.9): the parameter
+     * types separate same-name overloads that a name-only lookup collapses.
+     */
+    private String rtMethodName(RegistryHandles handles, String officialClass,
+            String officialMethod, String[] paramTypes) {
+        if (remapProfile && officialMappings != null) {
+            return officialMappings.runtimeMethodName(officialClass,
+                    officialMethod, paramTypes);
+        }
+        return officialMethod;
+    }
+
+    /**
      * Binds every registered item and block into the real registries.
      * Never throws; failures are isolated per entry.
      *
@@ -162,16 +175,18 @@ public final class GameContentBindingInstaller {
     private BindingResult bindItem(RegistryHandles handles, ItemContent content) {
         try {
             Class<?> propertiesClass = handles.itemClass.getClassLoader()
-                    .loadClass(MC_ITEM_PROPERTIES);
+                    .loadClass(rt(MC_ITEM_PROPERTIES));
             Object properties = propertiesClass.getConstructor().newInstance();
-            Method stacks = findNoArgReturningMethod(propertiesClass,
-                    new String[] {rtMethodName(handles, MC_ITEM_PROPERTIES, "stacksTo"),
-                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxCount"),
-                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxStackSize")});
+            // v26.8-Alpha.9: stack-limit setters take an int, so probe with
+            // the (int) parameter type instead of the broken no-arg probe.
+            Method stacks = findIntParamMethod(propertiesClass, handles,
+                    MC_ITEM_PROPERTIES,
+                    new String[] {"stacksTo", "maxCount", "maxStackSize"});
             Object propertiesOut = stacks != null && content.maxStack() != 64
                     ? stacks.invoke(properties, content.maxStack())
                     : properties;
-            setIdOnProperties(handles, propertiesOut, content.id(), "ITEM");
+            setIdOnProperties(handles, propertiesOut, content.id(), "ITEM",
+                    MC_ITEM_PROPERTIES);
             Constructor<?> ctor = handles.itemClass.getConstructor(propertiesClass);
             Object item = ctor.newInstance(propertiesOut);
             return register(handles, "item", content.id(), item);
@@ -187,21 +202,29 @@ public final class GameContentBindingInstaller {
     /**
      * Modern MC requires {@code Item.Properties#setId(ResourceKey)} before
      * construction ("Item id not set" otherwise). Builds the MC ResourceKey
-     * reflectively from Registries.ITEM + Identifier.
+     * reflectively from Registries.ITEM + Identifier. Every target name is
+     * mapping-translated so obfuscated pre-26.1 profiles resolve
+     * (v26.8-Alpha.9).
      */
-    private static void setIdOnProperties(RegistryHandles handles, Object properties,
-            ResourceKey key, String registryField) {
+    private void setIdOnProperties(RegistryHandles handles, Object properties,
+            ResourceKey key, String registryField, String propertiesOfficialClass) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
         try {
             ClassLoader loader = properties.getClass().getClassLoader();
-            Class<?> registries = loader.loadClass("net.minecraft.core.registries.Registries");
-            Object itemRegistryKey = registries.getField(registryField).get(null);
-            Class<?> resourceKeyClass = loader.loadClass("net.minecraft.resources.ResourceKey");
+            String registriesOfficial = "net.minecraft.core.registries.Registries";
+            Class<?> registries = loader.loadClass(rt(registriesOfficial));
+            Object itemRegistryKey = registries.getField(
+                    rtFieldName(registriesOfficial, registryField)).get(null);
+            String resourceKeyOfficial = "net.minecraft.resources.ResourceKey";
+            Class<?> resourceKeyClass = loader.loadClass(rt(resourceKeyOfficial));
             Object identifier = handles.identifiers().create(key.namespace(), key.name());
-            Method create = resourceKeyClass.getMethod("create",
+            Method create = resourceKeyClass.getMethod(
+                    rtMethodName(handles, resourceKeyOfficial, "create"),
                     resourceKeyClass, handles.identifiers().type());
             Object mcKey = create.invoke(null, itemRegistryKey, identifier);
-            properties.getClass().getMethod("setId", resourceKeyClass)
-                    .invoke(properties, mcKey);
+            properties.getClass().getMethod(
+                    rtMethodName(handles, propertiesOfficialClass, "setId"),
+                    resourceKeyClass).invoke(properties, mcKey);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // Older/newer naming without setId: constructor will report the
             // missing id as ENTRY_FAILED with its own message.
@@ -211,16 +234,21 @@ public final class GameContentBindingInstaller {
     private BindingResult bindBlock(RegistryHandles handles, BlockContent content) {
         try {
             Class<?> propertiesClass = handles.blockClass.getClassLoader()
-                    .loadClass(MC_BLOCK_PROPERTIES);
+                    .loadClass(rt(MC_BLOCK_PROPERTIES));
             Object properties = noArgInstance(propertiesClass);
             if (properties == null) {
                 properties = invokeStaticFactory(propertiesClass,
-                        new String[] {"create", "of"});
+                        new String[] {
+                                rtMethodName(handles, MC_BLOCK_PROPERTIES, "of"),
+                                rtMethodName(handles, MC_BLOCK_PROPERTIES, "create")});
             }
             if (properties == null) {
                 return new BindingResult("block", content.id(), false, "TARGET_UNRESOLVED");
             }
-            setIdOnProperties(handles, properties, content.id(), "BLOCK");
+            setIdOnProperties(handles, properties, content.id(), "BLOCK",
+                    MC_BLOCK_PROPERTIES);
+            applyBlockStrength(handles, propertiesClass, properties, content);
+            applyLightLevel(handles, propertiesClass, properties, content);
             Object block = handles.blockClass.getConstructor(propertiesClass)
                     .newInstance(properties);
             return register(handles, "block", content.id(), block);
@@ -230,8 +258,158 @@ public final class GameContentBindingInstaller {
         }
     }
 
+    /**
+     * Applies {@code Properties.strength(hardness, resistance)} through the
+     * signature-exact mapping when the mod declares non-default values.
+     * Fail-open: property application never blocks the binding itself
+     * (v26.8-Alpha.9).
+     */
+    private void applyBlockStrength(RegistryHandles handles,
+            Class<?> propertiesClass, Object properties, BlockContent content) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        if (content.hardness() <= 0 && content.resistance() <= 0) {
+            return;
+        }
+        try {
+            Method strength = propertiesClass.getMethod(
+                    rtMethodName(handles, MC_BLOCK_PROPERTIES, "strength",
+                            new String[] {"float", "float"}),
+                    float.class, float.class);
+            strength.invoke(properties, content.hardness(), content.resistance());
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block strength application unavailable: " + e);
+        }
+    }
+
+    /**
+     * Applies {@code Properties.lightLevel(ToIntFunction)} through the
+     * signature-exact mapping using a reflective Proxy for the lambda.
+     * Fail-open (v26.8-Alpha.9).
+     */
+    private void applyLightLevel(RegistryHandles handles,
+            Class<?> propertiesClass, Object properties, BlockContent content) {
+        if (content.luminance() <= 0) {
+            return;
+        }
+        try {
+            ClassLoader loader = properties.getClass().getClassLoader();
+            Class<?> toIntFn = loader.loadClass("java.util.function.ToIntFunction");
+            int luminance = content.luminance();
+            Object fn = java.lang.reflect.Proxy.newProxyInstance(loader,
+                    new Class<?>[] {toIntFn},
+                    (proxy, method, args) -> {
+                        if (method.getDeclaringClass() == Object.class) {
+                            return switch (method.getName()) {
+                                case "hashCode" -> System.identityHashCode(proxy);
+                                case "equals" -> proxy == args[0];
+                                case "toString" -> "aprism-light-level";
+                                default -> null;
+                            };
+                        }
+                        return luminance;
+                    });
+            Method light = propertiesClass.getMethod(
+                    rtMethodName(handles, MC_BLOCK_PROPERTIES, "lightLevel",
+                            new String[] {"java.util.function.ToIntFunction"}),
+                    toIntFn);
+            light.invoke(properties, fn);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block lightLevel application unavailable: " + e);
+        }
+    }
+
+    /**
+     * Evidence-only readback of the live block's destroy time and explosion
+     * resistance, proving the strength(...) translation end-to-end. Never
+     * affects the binding result (v26.8-Alpha.9).
+     */
+    private void readBlockProperties(RegistryHandles handles, ResourceKey key,
+            Object block) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        try {
+            Method destroyTime = block.getClass().getMethod(
+                    rtMethodName(handles,
+                            "net.minecraft.world.level.block.state.BlockBehaviour",
+                            "defaultDestroyTime", new String[0]));
+            Object dt = destroyTime.invoke(block);
+            String bbOfficial =
+                    "net.minecraft.world.level.block.state.BlockBehaviour";
+            Class<?> bb = block.getClass().getClassLoader().loadClass(rt(bbOfficial));
+            java.lang.reflect.Field resistance = bb.getDeclaredField(
+                    rtFieldName(bbOfficial, "explosionResistance"));
+            resistance.setAccessible(true);
+            Object res = resistance.getFloat(block);
+            LOG.info("block property readback: '" + key.combined()
+                    + "' destroyTime=" + dt + " explosionResistance=" + res);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block property readback unavailable: " + e);
+        }
+    }
+
+    /** Presence-probe candidates tried against the identifier param type. */
+    private Method findPresenceProbe(RegistryHandles handles, Class<?> idType) {
+        String[] paramTypes = {"net.minecraft.resources.ResourceLocation"};
+        for (String candidate : new String[] {"containsKey", "getValue", "get"}) {
+            try {
+                return handles.registryClass().getMethod(
+                        rtMethodName(handles, "net.minecraft.core.Registry",
+                                candidate, paramTypes),
+                        idType);
+            } catch (NoSuchMethodException ignored) {
+                // try next candidate
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Evidence-only readback of the live item's max stack size, proving the
+     * stack-limit property translation end-to-end. Never affects the
+     * binding result (v26.8-Alpha.9).
+     */
+    private void readMaxStackSize(RegistryHandles handles, String kind,
+            ResourceKey key, IdentifierFactory ids, Object identifier) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        try {
+            Method getValue = handles.registryClass().getMethod(
+                    rtMethodName(handles, "net.minecraft.core.Registry",
+                            "getValue",
+                            new String[] {"net.minecraft.resources.ResourceLocation"}),
+                    ids.type());
+            getValue.setAccessible(true);
+            Object registered = getValue.invoke(handles.registryFor(kind),
+                    identifier);
+            if (registered == null) {
+                return;
+            }
+            // 26.x: getMaxStackSize(); 1.21.4: getDefaultMaxStackSize().
+            // Empty-param signature lookup keeps no-arg name collisions out.
+            Method maxStack = null;
+            for (String candidate : new String[] {"getMaxStackSize",
+                    "getDefaultMaxStackSize"}) {
+                try {
+                    maxStack = registered.getClass().getMethod(
+                            rtMethodName(handles, MC_ITEM, candidate,
+                                    new String[0]));
+                    break;
+                } catch (NoSuchMethodException ignored) {
+                    // try next candidate
+                }
+            }
+            if (maxStack == null) {
+                throw new NoSuchMethodException(
+                        "no max-stack-size accessor on " + registered.getClass());
+            }
+            Object size = maxStack.invoke(registered);
+            LOG.info("maxStackSize readback: '" + key.combined() + "' = " + size);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("maxStackSize readback unavailable: " + e);
+        }
+    }
+
     private BindingResult register(RegistryHandles handles, String kind, ResourceKey key,
             Object value) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
         try {
             IdentifierFactory ids = handles.identifiers();
             Object identifier = ids.create(key.namespace(), key.name());
@@ -240,6 +418,44 @@ public final class GameContentBindingInstaller {
                     handles.registryClass(), ids.type(), Object.class);
             register.setAccessible(true);
             register.invoke(null, handles.registryFor(kind), identifier, value);
+            // v26.8-Alpha.9: read back from the live registry so "bound"
+            // means the id is actually present, not only that register()
+            // returned cleanly. Readback failure is logged but never
+            // downgrades the binding result.
+            try {
+                // v26.8-Alpha.9: overload-exact signature translation picks
+                // containsKey(ResourceLocation) directly (1.21.4: d, not the
+                // ResourceKey overload e); name-only candidates stay as a
+                // NO_REMAP fallback.
+                Method probe = findPresenceProbe(handles, ids.type());
+                if (probe == null) {
+                    throw new NoSuchMethodException(
+                            "no usable registry presence probe");
+                }
+                probe.setAccessible(true);
+                Object present = probe.invoke(handles.registryFor(kind), identifier);
+                boolean found = present instanceof Boolean b ? b
+                        : present instanceof java.util.Optional<?> opt
+                                ? opt.isPresent()
+                                : present != null;
+                if (found) {
+                    LOG.info("Registry readback: '" + key.combined()
+                            + "' present in the live " + kind + " registry");
+                } else {
+                    LOG.warning("Registry readback: '" + key.combined()
+                            + "' ABSENT from the live " + kind + " registry");
+                }
+                // Evidence-only: for items, read the live max stack size so
+                // the stack-limit translation (stacksTo/maxCount) is proven
+                // end-to-end, not just the registration.
+                if (found && "item".equals(kind)) {
+                    readMaxStackSize(handles, kind, key, ids, identifier);
+                } else if (found && "block".equals(kind)) {
+                    readBlockProperties(handles, key, value);
+                }
+            } catch (ReflectiveOperationException | RuntimeException rb) {
+                LOG.warning("Registry readback unavailable: " + rb);
+            }
             return new BindingResult(kind, key, true, null);
         } catch (ReflectiveOperationException | RuntimeException e) {
             LOG.warning("Failed to register " + kind + " '" + key.combined() + "': " + e);
@@ -255,7 +471,15 @@ public final class GameContentBindingInstaller {
             Class<?> registries = loader.loadClass(rt(BUILT_IN_REGISTRIES));
             Class<?> registryHelper = loader.loadClass(rt(REGISTRY_HELPER));
             Class<?> registryIface = loader.loadClass(rt("net.minecraft.core.Registry"));
-            Class<?> identifier = loadIdentifier(loader);
+            Class<?> identifier;
+            String identifierOfficial;
+            try {
+                identifier = loader.loadClass(rt(IDENTIFIER));
+                identifierOfficial = IDENTIFIER;
+            } catch (ClassNotFoundException first) {
+                identifier = loader.loadClass(rt(LEGACY_IDENTIFIER));
+                identifierOfficial = LEGACY_IDENTIFIER;
+            }
             // v26.8-Alpha.6: static field names translate too (ITEM/BLOCK).
             String itemFieldName = rtFieldName(BUILT_IN_REGISTRIES, "ITEM");
             String blockFieldName = rtFieldName(BUILT_IN_REGISTRIES, "BLOCK");
@@ -267,7 +491,8 @@ public final class GameContentBindingInstaller {
             Class<?> blockClass = loader.loadClass(rt(MC_BLOCK));
             return new RegistryHandles(registryIface, registryHelper, itemRegistry,
                     blockRegistry, itemClass, blockClass,
-                    IdentifierFactory.detect(identifier));
+                    IdentifierFactory.detect(identifier,
+                            rtMethodName(null, identifierOfficial, "parse")));
         } catch (ReflectiveOperationException | RuntimeException e) {
             LOG.warning("GameContentBindingInstaller: MC registry surface unresolved: "
                     + e.getClass().getName() + ": " + e.getMessage()
@@ -276,19 +501,20 @@ public final class GameContentBindingInstaller {
         }
     }
 
-    /** Supports the 1.21.x ResourceLocation name and the 26.x Identifier name. */
-    private Class<?> loadIdentifier(ClassLoader loader) throws ClassNotFoundException {
-        try {
-            return loader.loadClass(rt(IDENTIFIER));
-        } catch (ClassNotFoundException first) {
-            return loader.loadClass(rt(LEGACY_IDENTIFIER));
-        }
-    }
-
-    private static Method findNoArgReturningMethod(Class<?> type, String[] candidates) {
-        for (String name : candidates) {
+    /**
+     * Finds the first candidate that exists as a (int)-param method with a
+     * mapping-translated name (v26.8-Alpha.9, replaces the no-arg probe
+     * that could never match {@code stacksTo(int)}).
+     */
+    private Method findIntParamMethod(Class<?> type, RegistryHandles handles,
+            String officialClass, String[] names) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        for (String name : names) {
             try {
-                return type.getMethod(name);
+                return type.getMethod(
+                        rtMethodName(handles, officialClass, name,
+                                new String[] {"int"}),
+                        int.class);
             } catch (NoSuchMethodException ignored) {
                 // try next candidate
             }
@@ -322,7 +548,8 @@ public final class GameContentBindingInstaller {
     /** Minimal functional view of the target Identifier class. */
     record IdentifierFactory(Class<?> type, Constructor<?> nsPathCtor, Method parse) {
 
-        static IdentifierFactory detect(Class<?> identifier) throws NoSuchMethodException {
+        static IdentifierFactory detect(Class<?> identifier, String parseName)
+                throws NoSuchMethodException {
             Constructor<?> ctor = null;
             try {
                 ctor = identifier.getConstructor(String.class, String.class);
@@ -331,7 +558,9 @@ public final class GameContentBindingInstaller {
             }
             Method parseMeth = null;
             try {
-                parseMeth = identifier.getMethod("parse", String.class);
+                // v26.8-Alpha.9: the parse factory name is mapping-translated
+                // so obfuscated pre-26.1 profiles (e.g. 1.21.4 akv.a) resolve.
+                parseMeth = identifier.getMethod(parseName, String.class);
                 if (!java.lang.reflect.Modifier.isStatic(parseMeth.getModifiers())) {
                     parseMeth = null;
                 }

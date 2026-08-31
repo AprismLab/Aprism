@@ -32,13 +32,17 @@ public final class OfficialMappings {
     private final Map<String, String> officialToRuntime;
     private final Map<String, Map<String, String>> fieldsByOfficialClass;
     private final Map<String, Map<String, String>> methodsByOfficialClass;
+    /** v26.8-Alpha.9: class -> "name(paramTypes)" -> runtime (overload-exact). */
+    private final Map<String, Map<String, String>> methodsBySig;
 
     private OfficialMappings(Map<String, String> officialToRuntime,
             Map<String, Map<String, String>> fieldsByOfficialClass,
-            Map<String, Map<String, String>> methodsByOfficialClass) {
+            Map<String, Map<String, String>> methodsByOfficialClass,
+            Map<String, Map<String, String>> methodsBySig) {
         this.officialToRuntime = officialToRuntime;
         this.fieldsByOfficialClass = fieldsByOfficialClass;
         this.methodsByOfficialClass = methodsByOfficialClass;
+        this.methodsBySig = methodsBySig;
     }
 
     /**
@@ -55,6 +59,7 @@ public final class OfficialMappings {
         Map<String, String> classes = new HashMap<>(30_000);
         Map<String, Map<String, String>> fields = new HashMap<>();
         Map<String, Map<String, String>> methods = new HashMap<>();
+        Map<String, Map<String, String>> methodsBySig = new HashMap<>();
         String lastOfficialClass = null;
         try (BufferedReader br = Files.newBufferedReader(clientTxt,
                 StandardCharsets.UTF_8)) {
@@ -67,7 +72,8 @@ public final class OfficialMappings {
                     // Member line under the last class line.
                     if (lastOfficialClass != null) {
                         if (line.contains("(")) {
-                            parseMethodLine(line, lastOfficialClass, methods);
+                            parseMethodLine(line, lastOfficialClass, methods,
+                                    methodsBySig);
                         } else {
                             parseFieldLine(line, lastOfficialClass, fields);
                         }
@@ -95,7 +101,7 @@ public final class OfficialMappings {
         LOG.info("OfficialMappings loaded: " + size + " classes, "
                 + fields.values().stream().mapToInt(Map::size).sum()
                 + " fields");
-        return new OfficialMappings(classes, fields, methods);
+        return new OfficialMappings(classes, fields, methods, methodsBySig);
     }
 
     /**
@@ -104,7 +110,8 @@ public final class OfficialMappings {
      * overloads collapse to the last entry (binder targets have unique names).
      */
     private static void parseMethodLine(String line, String officialClass,
-            Map<String, Map<String, String>> methods) {
+            Map<String, Map<String, String>> methods,
+            Map<String, Map<String, String>> methodsBySig) {
         int arrow = line.indexOf(" -> ");
         if (arrow < 0) {
             return;
@@ -126,6 +133,16 @@ public final class OfficialMappings {
         }
         methods.computeIfAbsent(officialClass, k -> new HashMap<>())
                 .put(officialName, obfName);
+        // v26.8-Alpha.9: keep the parameter-type key so same-name overloads
+        // (e.g. containsKey(ResourceLocation) vs containsKey(ResourceKey))
+        // resolve to their own runtime names instead of last-wins.
+        int closeParen = officialSig.indexOf(')', paren);
+        if (closeParen > paren) {
+            String sigKey = officialName + "("
+                    + officialSig.substring(paren + 1, closeParen) + ")";
+            methodsBySig.computeIfAbsent(officialClass, k -> new HashMap<>())
+                    .put(sigKey, obfName);
+        }
     }
 
     /**
@@ -138,6 +155,32 @@ public final class OfficialMappings {
                 methodsByOfficialClass.get(officialClassName);
         return methods == null ? officialMethodName
                 : methods.getOrDefault(officialMethodName, officialMethodName);
+    }
+
+    /**
+     * Resolves an official method within an official class to its runtime
+     * name, disambiguating same-name overloads by parameter types
+     * (v26.8-Alpha.9). Falls back to the name-only lookup when the exact
+     * signature is not mapped.
+     *
+     * @param officialClassName the official class name
+     * @param officialMethodName the official method name
+     * @param paramTypes official parameter type names as written in
+     *        client.txt, comma-joined at the call site (e.g.
+     *        {@code ["net.minecraft.resources.ResourceLocation"]})
+     * @return the runtime method name
+     */
+    public String runtimeMethodName(String officialClassName,
+            String officialMethodName, String[] paramTypes) {
+        Map<String, String> bySig = methodsBySig.get(officialClassName);
+        if (bySig != null) {
+            String exact = bySig.get(officialMethodName + "("
+                    + String.join(",", paramTypes) + ")");
+            if (exact != null) {
+                return exact;
+            }
+        }
+        return runtimeMethodName(officialClassName, officialMethodName);
     }
 
     private static void parseFieldLine(String line, String officialClass,

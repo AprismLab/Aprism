@@ -329,8 +329,16 @@ public final class AprismMixinService extends MixinServiceAbstract {
 
     /**
      * Bridges SpongePowered Mixin's {@link ILogger} to a JDK logger.
+     *
+     * <p>MUST be public: service consumers resolve the logger reflectively
+     * (MixinExtras wraps it in a JDK proxy and calls
+     * {@code logger.getClass().getMethod(...).invoke(...)} without
+     * {@code setAccessible}). A private/package-private implementation class
+     * makes that reflective call fail with IllegalAccessException, which the
+     * proxy surfaces as UndeclaredThrowableException during MixinExtras
+     * bootstrap (observed v26.8-Alpha.9).
      */
-    private static final class AprismLogger implements ILogger {
+    public static final class AprismLogger implements ILogger {
         private final java.util.logging.Logger delegate;
 
         AprismLogger(java.util.logging.Logger delegate) {

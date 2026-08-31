@@ -21,6 +21,10 @@ shadow = "9.0.0-beta12"
 
 # Mixin
 mixin = "0.16.5+mixin.0.8.7"
+# MixinExtras: Fabric Loader bundles it upstream (mods like Lithium compile
+# their mixins against it); Aprism must ship the same classes or every mod
+# mixin using MixinExtras injectors/sugars fails to apply.
+mixinextras = "0.4.1"
 asm = "9.9"
 
 # JSON / TOML
@@ -37,6 +41,7 @@ logback = "1.5.18"
 [libraries]
 # Mixin / ASM
 mixin = { module = "net.fabricmc:sponge-mixin", version.ref = "mixin" }
+mixinextras = { module = "io.github.llamalad7:mixinextras-common", version.ref = "mixinextras" }
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }

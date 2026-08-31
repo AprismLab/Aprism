@@ -51,8 +51,43 @@ public final class GameBootstrapGate {
     /** Master switch property name. */
     public static final String PROP_DEFER = "aprism.deferUntilBootstrap";
 
-    private static final String VANILLA_BOOTSTRAP_CLASS = "net.minecraft.server.Bootstrap";
-    private static final String VANILLA_CHECK_METHOD = "checkBootstrapCalled";
+    /** Official vanilla probe class (translated on obfuscated profiles). */
+    public static final String VANILLA_BOOTSTRAP_CLASS = "net.minecraft.server.Bootstrap";
+    /** Official vanilla probe method (translated on obfuscated profiles). */
+    public static final String VANILLA_CHECK_METHOD = "checkBootstrapCalled";
+
+    /**
+     * Active probe names. Defaults are the official vanilla names; on
+     * obfuscated pre-26.1 profiles the runtime translates them through the
+     * loaded Mojang mappings (v26.8-Alpha.9).
+     */
+    private static volatile String probeClassName = VANILLA_BOOTSTRAP_CLASS;
+    private static volatile String probeMethodName = VANILLA_CHECK_METHOD;
+
+    /**
+     * Re-targets the bootstrap probe (used when official mappings translate
+     * the vanilla names to their obfuscated runtime equivalents). Unknown
+     * names are tolerated: a failed probe simply keeps the gate inactive.
+     *
+     * @param className runtime probe class name
+     * @param methodName runtime probe method name
+     */
+    public static void setProbeNames(String className, String methodName) {
+        if (className != null && !className.isBlank()) {
+            probeClassName = className;
+        }
+        if (methodName != null && !methodName.isBlank()) {
+            probeMethodName = methodName;
+        }
+    }
+
+    /**
+     * @return the currently configured probe class name
+     */
+    public static String probeClassName() {
+        return probeClassName;
+    }
+    //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
     private static final AtomicBoolean DISPATCHED = new AtomicBoolean(false);
 
@@ -128,9 +163,9 @@ public final class GameBootstrapGate {
      */
     static boolean isVanillaBootstrapped() {
         try {
-            Class<?> bootstrap = Class.forName(VANILLA_BOOTSTRAP_CLASS);
+            Class<?> bootstrap = Class.forName(probeClassName);
             java.lang.reflect.Method check = bootstrap.getDeclaredMethod(
-                    VANILLA_CHECK_METHOD, Supplier.class);
+                    probeMethodName, Supplier.class);
             check.setAccessible(true);
             // A clean return means vanilla considers itself bootstrapped;
             // an IllegalStateException means it does not.
@@ -151,8 +186,8 @@ public final class GameBootstrapGate {
      */
     private static boolean probeAvailable() {
         try {
-            Class.forName(VANILLA_BOOTSTRAP_CLASS)
-                    .getDeclaredMethod(VANILLA_CHECK_METHOD, Supplier.class);
+            Class.forName(probeClassName)
+                    .getDeclaredMethod(probeMethodName, Supplier.class);
             return true;
         } catch (Throwable absent) {
             return false;

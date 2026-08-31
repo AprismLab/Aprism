@@ -27,12 +27,37 @@ public final class AprismGlobalPropertyService implements IGlobalPropertyService
 
     /**
      * A property key backed by a string name.
+     *
+     * <p>MUST implement value equality: callers (Mixin core caches its key
+     * instances, but MixinExtras and other service consumers resolve a fresh
+     * key for every get/put) repeatedly call {@link #resolveKey(String)} and
+     * expect the backing store to see them as the same property. Without
+     * equals/hashCode the map keys are compared by identity, so a
+     * setProperty followed by getProperty with a freshly resolved key
+     * silently misses - observed as a NullPointerException inside MixinExtras
+     * Blackboard.put during its bootstrap (v26.8-Alpha.9).
      */
     private static final class StringKey implements IPropertyKey {
         private final String name;
 
         StringKey(String name) {
             this.name = name;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof StringKey other)) {
+                return false;
+            }
+            return name.equals(other.name);
+        }
+
+        @Override
+        public int hashCode() {
+            return name.hashCode();
         }
 
         @Override

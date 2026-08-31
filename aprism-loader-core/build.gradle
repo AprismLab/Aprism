@@ -10,6 +10,7 @@ dependencies {
     api project(':aprism-api')
     api project(':aprism-manifest')
     api libs.mixin
+    api libs.mixinextras
     api libs.bundles.asm
 
     testImplementation libs.bundles.testing
