@@ -23,7 +23,13 @@ class OfficialMappingsTest {
             # comment line should be skipped
             net.minecraft.core.registries.BuiltInRegistries -> abc.def:
                 java.lang.String ITEM -> a
+            net.minecraft.core.Registry -> ke:
+                boolean containsKey(net.minecraft.resources.ResourceLocation) -> d
+                boolean containsKey(net.minecraft.resources.ResourceKey) -> e
+                java.lang.Object getValue(net.minecraft.resources.ResourceLocation) -> a
             net.minecraft.world.item.Item -> ghi:
+                int stacksTo(int) -> b
+                int getMaxStackSize() -> c
                 void method_1(net.minecraft.world.item.ItemStack)
             skip.Me -> skip.Other:
             """;
@@ -96,5 +102,40 @@ class OfficialMappingsTest {
         installer.setRemapProfile(true);
         var results = installer.bindAll();
         assertEquals("PROFILE_UNSUPPORTED", results.get(0).refusal());
+    }
+
+    @Test
+    void resolvesOverloadsByParameterSignature() throws Exception {
+        // v26.8-Alpha.9: same-name overloads collapse to last-wins in the
+        // name-only table, but the signature table must pick the exact one.
+        Path f = tempDir.resolve("client.txt");
+        Files.writeString(f, CLIENT_TXT);
+        OfficialMappings m = OfficialMappings.load(f);
+
+        // Name-only: documents the last-wins collapse (ResourceKey overload).
+        assertEquals("e", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "containsKey"));
+        // Signature-exact: each overload resolves to its own runtime name.
+        assertEquals("d", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "containsKey",
+                new String[] {"net.minecraft.resources.ResourceLocation"}));
+        assertEquals("e", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "containsKey",
+                new String[] {"net.minecraft.resources.ResourceKey"}));
+        assertEquals("a", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "getValue",
+                new String[] {"net.minecraft.resources.ResourceLocation"}));
+        // Unknown signature falls back to the name-only table (last-wins "e").
+        assertEquals("e", m.runtimeMethodName(
+                "net.minecraft.core.Registry", "containsKey",
+                new String[] {"java.lang.String"}));
+        // int-param methods (stacksTo) resolve through the signature table.
+        assertEquals("b", m.runtimeMethodName(
+                "net.minecraft.world.item.Item", "stacksTo",
+                new String[] {"int"}));
+        // Unmapped class passes the method name through unchanged.
+        assertEquals("containsKey", m.runtimeMethodName(
+                "net.minecraft.core.Unknown", "containsKey",
+                new String[] {"int"}));
     }
 }

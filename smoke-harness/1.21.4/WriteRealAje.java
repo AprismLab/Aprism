@@ -43,7 +43,7 @@ public class WriteRealAje {
         mv.visitTypeInsn(Opcodes.NEW, "com/aprism/api/registry/ItemContent");
         mv.visitInsn(Opcodes.DUP);
         mv.visitVarInsn(Opcodes.ALOAD, 3);
-        mv.visitIntInsn(Opcodes.BIPUSH, 64);
+        mv.visitIntInsn(Opcodes.BIPUSH, 16);
         mv.visitMethodInsn(Opcodes.INVOKESPECIAL,
                 "com/aprism/api/registry/ItemContent", "<init>",
                 "(Lcom/aprism/api/registry/ResourceKey;I)V", false);

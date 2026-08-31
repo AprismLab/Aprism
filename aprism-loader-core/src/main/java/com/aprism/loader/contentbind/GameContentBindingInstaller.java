@@ -112,6 +112,19 @@ public final class GameContentBindingInstaller {
     }
 
     /**
+     * Overload-exact method translation (v26.8-Alpha.9): the parameter
+     * types separate same-name overloads that a name-only lookup collapses.
+     */
+    private String rtMethodName(RegistryHandles handles, String officialClass,
+            String officialMethod, String[] paramTypes) {
+        if (remapProfile && officialMappings != null) {
+            return officialMappings.runtimeMethodName(officialClass,
+                    officialMethod, paramTypes);
+        }
+        return officialMethod;
+    }
+
+    /**
      * Binds every registered item and block into the real registries.
      * Never throws; failures are isolated per entry.
      *
@@ -164,10 +177,11 @@ public final class GameContentBindingInstaller {
             Class<?> propertiesClass = handles.itemClass.getClassLoader()
                     .loadClass(rt(MC_ITEM_PROPERTIES));
             Object properties = propertiesClass.getConstructor().newInstance();
-            Method stacks = findNoArgReturningMethod(propertiesClass,
-                    new String[] {rtMethodName(handles, MC_ITEM_PROPERTIES, "stacksTo"),
-                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxCount"),
-                            rtMethodName(handles, MC_ITEM_PROPERTIES, "maxStackSize")});
+            // v26.8-Alpha.9: stack-limit setters take an int, so probe with
+            // the (int) parameter type instead of the broken no-arg probe.
+            Method stacks = findIntParamMethod(propertiesClass, handles,
+                    MC_ITEM_PROPERTIES,
+                    new String[] {"stacksTo", "maxCount", "maxStackSize"});
             Object propertiesOut = stacks != null && content.maxStack() != 64
                     ? stacks.invoke(properties, content.maxStack())
                     : properties;
@@ -242,6 +256,67 @@ public final class GameContentBindingInstaller {
         }
     }
 
+    /** Presence-probe candidates tried against the identifier param type. */
+    private Method findPresenceProbe(RegistryHandles handles, Class<?> idType) {
+        String[] paramTypes = {"net.minecraft.resources.ResourceLocation"};
+        for (String candidate : new String[] {"containsKey", "getValue", "get"}) {
+            try {
+                return handles.registryClass().getMethod(
+                        rtMethodName(handles, "net.minecraft.core.Registry",
+                                candidate, paramTypes),
+                        idType);
+            } catch (NoSuchMethodException ignored) {
+                // try next candidate
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Evidence-only readback of the live item's max stack size, proving the
+     * stack-limit property translation end-to-end. Never affects the
+     * binding result (v26.8-Alpha.9).
+     */
+    private void readMaxStackSize(RegistryHandles handles, String kind,
+            ResourceKey key, IdentifierFactory ids, Object identifier) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        try {
+            Method getValue = handles.registryClass().getMethod(
+                    rtMethodName(handles, "net.minecraft.core.Registry",
+                            "getValue",
+                            new String[] {"net.minecraft.resources.ResourceLocation"}),
+                    ids.type());
+            getValue.setAccessible(true);
+            Object registered = getValue.invoke(handles.registryFor(kind),
+                    identifier);
+            if (registered == null) {
+                return;
+            }
+            // 26.x: getMaxStackSize(); 1.21.4: getDefaultMaxStackSize().
+            // Empty-param signature lookup keeps no-arg name collisions out.
+            Method maxStack = null;
+            for (String candidate : new String[] {"getMaxStackSize",
+                    "getDefaultMaxStackSize"}) {
+                try {
+                    maxStack = registered.getClass().getMethod(
+                            rtMethodName(handles, MC_ITEM, candidate,
+                                    new String[0]));
+                    break;
+                } catch (NoSuchMethodException ignored) {
+                    // try next candidate
+                }
+            }
+            if (maxStack == null) {
+                throw new NoSuchMethodException(
+                        "no max-stack-size accessor on " + registered.getClass());
+            }
+            Object size = maxStack.invoke(registered);
+            LOG.info("maxStackSize readback: '" + key.combined() + "' = " + size);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("maxStackSize readback unavailable: " + e);
+        }
+    }
+
     private BindingResult register(RegistryHandles handles, String kind, ResourceKey key,
             Object value) {
         //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
@@ -258,22 +333,11 @@ public final class GameContentBindingInstaller {
             // returned cleanly. Readback failure is logged but never
             // downgrades the binding result.
             try {
-                // Name-only translation cannot separate overloads (1.21.4:
-                // containsKey(RL)->d vs containsKey(RK)->e), so probe the
-                // presence candidates in order against the RL parameter type.
-                Method probe = null;
-                for (String candidate : new String[] {"containsKey", "getValue",
-                        "get"}) {
-                    try {
-                        probe = handles.registryClass().getMethod(
-                                rtMethodName(handles,
-                                        "net.minecraft.core.Registry", candidate),
-                                ids.type());
-                        break;
-                    } catch (NoSuchMethodException ignored) {
-                        // try next candidate
-                    }
-                }
+                // v26.8-Alpha.9: overload-exact signature translation picks
+                // containsKey(ResourceLocation) directly (1.21.4: d, not the
+                // ResourceKey overload e); name-only candidates stay as a
+                // NO_REMAP fallback.
+                Method probe = findPresenceProbe(handles, ids.type());
                 if (probe == null) {
                     throw new NoSuchMethodException(
                             "no usable registry presence probe");
@@ -290,6 +354,12 @@ public final class GameContentBindingInstaller {
                 } else {
                     LOG.warning("Registry readback: '" + key.combined()
                             + "' ABSENT from the live " + kind + " registry");
+                }
+                // Evidence-only: for items, read the live max stack size so
+                // the stack-limit translation (stacksTo/maxCount) is proven
+                // end-to-end, not just the registration.
+                if (found && "item".equals(kind)) {
+                    readMaxStackSize(handles, kind, key, ids, identifier);
                 }
             } catch (ReflectiveOperationException | RuntimeException rb) {
                 LOG.warning("Registry readback unavailable: " + rb);
@@ -339,10 +409,20 @@ public final class GameContentBindingInstaller {
         }
     }
 
-    private static Method findNoArgReturningMethod(Class<?> type, String[] candidates) {
-        for (String name : candidates) {
+    /**
+     * Finds the first candidate that exists as a (int)-param method with a
+     * mapping-translated name (v26.8-Alpha.9, replaces the no-arg probe
+     * that could never match {@code stacksTo(int)}).
+     */
+    private Method findIntParamMethod(Class<?> type, RegistryHandles handles,
+            String officialClass, String[] names) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        for (String name : names) {
             try {
-                return type.getMethod(name);
+                return type.getMethod(
+                        rtMethodName(handles, officialClass, name,
+                                new String[] {"int"}),
+                        int.class);
             } catch (NoSuchMethodException ignored) {
                 // try next candidate
             }
