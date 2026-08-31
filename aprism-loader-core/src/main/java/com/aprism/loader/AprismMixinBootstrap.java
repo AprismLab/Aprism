@@ -90,6 +90,14 @@ public final class AprismMixinBootstrap {
                 MixinBootstrap.init();
                 environmentInitialized = true;
                 LOG.info("SpongePowered Mixin environment initialized (service: Aprism)");
+                // The active transformer MUST be registered before MixinExtras
+                // initializes: MixinInternals.getExtensions() dereferences
+                // MixinEnvironment.getActiveTransformer() to register Mixin's
+                // transformer extensions. Under Fabric the transformer exists
+                // by this point; here we own the sequence, so acquire first.
+                acquireTransformer();
+                initializeMixinExtras();
+                fixUndetectedSide();
                 alignCompatibilityLevel();
             } catch (Throwable t) {
                 LOG.log(java.util.logging.Level.SEVERE, "Failed to initialize Mixin environment", t);
@@ -136,6 +144,97 @@ public final class AprismMixinBootstrap {
         }
         LOG.info("Mixin compatibility level left at " + current
                 + " (no higher level accepted by JRE " + Runtime.version().feature() + ")");
+    }
+
+    /**
+     * Initializes MixinExtras when it is present on the classpath.
+     *
+     * <p>Why this matters: Fabric Loader bundles MixinExtras upstream and
+     * modern Fabric mods (Lithium, and most others) compile their mixin
+     * classes against {@code com.llamalad7.mixinextras.*} injectors and
+     * sugars. When those classes are missing, Mixin fails to LOAD the
+     * supporting classes during weave and every mixin that uses MixinExtras
+     * features is silently skipped ("Mixin apply ... failed"). Partial
+     * application then breaks internal invariants inside the mod itself
+     * (observed with Lithium 0.25.3 on MC 26.2: the dragon-portal pattern
+     * replacement mixin was skipped while a plain cast mixin applied,
+     * producing a ClassCastException at world load).
+     *
+     * <p>Failure here is non-fatal: mods that do not use MixinExtras are
+     * unaffected, and a missing library simply skips the bootstrap.
+     */
+    private static void initializeMixinExtras() {
+        try {
+            // MixinExtras 0.4.x entry point is MixinExtrasBootstrap.init();
+            // older releases used initialize(). Try both so a future upgrade
+            // of the bundled library does not silently disable this path.
+            Class<?> bootstrap = Class.forName(
+                    "com.llamalad7.mixinextras.MixinExtrasBootstrap");
+            java.lang.reflect.Method init;
+            try {
+                init = bootstrap.getMethod("init");
+            } catch (NoSuchMethodException e) {
+                init = bootstrap.getMethod("initialize");
+            }
+            init.invoke(null);
+            LOG.info("MixinExtras bootstrap initialized");
+        } catch (ClassNotFoundException e) {
+            LOG.info("MixinExtras not present on the classpath - skipping bootstrap");
+        } catch (Throwable t) {
+            Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException ite
+                    && ite.getCause() != null) ? ite.getCause() : t;
+            LOG.log(java.util.logging.Level.WARNING,
+                    "MixinExtras bootstrap failed", cause);
+        }
+    }
+
+    /**
+     * Mixin's launch-profile based side detection fails for plain javaagent
+     * launches (the environment stays UNKNOWN and every sided mixin
+     * configuration is skipped with "unable to detect the current side").
+     *
+     * <p>If the side is still undetected after bootstrap, infer it from the
+     * game marker classes ({@code net.minecraft.client.main.Main} present
+     * means the JE client), or take an explicit override via
+     * {@code -Daprism.side=client|server}. Undetectable environments are left
+     * untouched so embedders keep their current behaviour.
+     */
+    private static void fixUndetectedSide() {
+        try {
+            MixinEnvironment env = MixinEnvironment.getCurrentEnvironment();
+            if (env.getSide() != MixinEnvironment.Side.UNKNOWN) {
+                return;
+            }
+            MixinEnvironment.Side side = inferSide();
+            if (side == null) {
+                LOG.warning("Mixin side undetectable and no evidence found - "
+                        + "sided mixin configurations will be skipped (override "
+                        + "with -Daprism.side=client|server)");
+                return;
+            }
+            env.setSide(side);
+            LOG.info("Mixin side set to " + side
+                    + " (launch-profile detection failed)");
+        } catch (Throwable t) {
+            LOG.warning("Failed to set Mixin side: " + t);
+        }
+    }
+
+    private static MixinEnvironment.Side inferSide() {
+        String prop = System.getProperty("aprism.side", "");
+        if ("server".equalsIgnoreCase(prop)) {
+            return MixinEnvironment.Side.SERVER;
+        }
+        if ("client".equalsIgnoreCase(prop)) {
+            return MixinEnvironment.Side.CLIENT;
+        }
+        try {
+            Class.forName("net.minecraft.client.main.Main", false,
+                    AprismMixinBootstrap.class.getClassLoader());
+            return MixinEnvironment.Side.CLIENT;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     /**
