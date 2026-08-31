@@ -247,12 +247,102 @@ public final class GameContentBindingInstaller {
             }
             setIdOnProperties(handles, properties, content.id(), "BLOCK",
                     MC_BLOCK_PROPERTIES);
+            applyBlockStrength(handles, propertiesClass, properties, content);
+            applyLightLevel(handles, propertiesClass, properties, content);
             Object block = handles.blockClass.getConstructor(propertiesClass)
                     .newInstance(properties);
             return register(handles, "block", content.id(), block);
         } catch (ReflectiveOperationException | RuntimeException e) {
             LOG.warning("Failed to bind block '" + content.id().combined() + "': " + e);
             return new BindingResult("block", content.id(), false, "ENTRY_FAILED");
+        }
+    }
+
+    /**
+     * Applies {@code Properties.strength(hardness, resistance)} through the
+     * signature-exact mapping when the mod declares non-default values.
+     * Fail-open: property application never blocks the binding itself
+     * (v26.8-Alpha.9).
+     */
+    private void applyBlockStrength(RegistryHandles handles,
+            Class<?> propertiesClass, Object properties, BlockContent content) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        if (content.hardness() <= 0 && content.resistance() <= 0) {
+            return;
+        }
+        try {
+            Method strength = propertiesClass.getMethod(
+                    rtMethodName(handles, MC_BLOCK_PROPERTIES, "strength",
+                            new String[] {"float", "float"}),
+                    float.class, float.class);
+            strength.invoke(properties, content.hardness(), content.resistance());
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block strength application unavailable: " + e);
+        }
+    }
+
+    /**
+     * Applies {@code Properties.lightLevel(ToIntFunction)} through the
+     * signature-exact mapping using a reflective Proxy for the lambda.
+     * Fail-open (v26.8-Alpha.9).
+     */
+    private void applyLightLevel(RegistryHandles handles,
+            Class<?> propertiesClass, Object properties, BlockContent content) {
+        if (content.luminance() <= 0) {
+            return;
+        }
+        try {
+            ClassLoader loader = properties.getClass().getClassLoader();
+            Class<?> toIntFn = loader.loadClass("java.util.function.ToIntFunction");
+            int luminance = content.luminance();
+            Object fn = java.lang.reflect.Proxy.newProxyInstance(loader,
+                    new Class<?>[] {toIntFn},
+                    (proxy, method, args) -> {
+                        if (method.getDeclaringClass() == Object.class) {
+                            return switch (method.getName()) {
+                                case "hashCode" -> System.identityHashCode(proxy);
+                                case "equals" -> proxy == args[0];
+                                case "toString" -> "aprism-light-level";
+                                default -> null;
+                            };
+                        }
+                        return luminance;
+                    });
+            Method light = propertiesClass.getMethod(
+                    rtMethodName(handles, MC_BLOCK_PROPERTIES, "lightLevel",
+                            new String[] {"java.util.function.ToIntFunction"}),
+                    toIntFn);
+            light.invoke(properties, fn);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block lightLevel application unavailable: " + e);
+        }
+    }
+
+    /**
+     * Evidence-only readback of the live block's destroy time and explosion
+     * resistance, proving the strength(...) translation end-to-end. Never
+     * affects the binding result (v26.8-Alpha.9).
+     */
+    private void readBlockProperties(RegistryHandles handles, ResourceKey key,
+            Object block) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        try {
+            Method destroyTime = block.getClass().getMethod(
+                    rtMethodName(handles,
+                            "net.minecraft.world.level.block.state.BlockBehaviour",
+                            "defaultDestroyTime", new String[0]));
+            Object dt = destroyTime.invoke(block);
+            String bbOfficial =
+                    "net.minecraft.world.level.block.state.BlockBehaviour";
+            Class<?> bb = block.getClass().getClassLoader().loadClass(rt(bbOfficial));
+            java.lang.reflect.Field resistance = bb.getDeclaredField(
+                    rtFieldName(bbOfficial, "explosionResistance"));
+            resistance.setAccessible(true);
+            Object res = resistance.getFloat(block);
+            LOG.info("block property readback: '" + key.combined()
+                    + "' destroyTime=" + dt + " explosionResistance=" + res);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            LOG.warning("block property readback unavailable: " + e);
         }
     }
 
@@ -360,6 +450,8 @@ public final class GameContentBindingInstaller {
                 // end-to-end, not just the registration.
                 if (found && "item".equals(kind)) {
                     readMaxStackSize(handles, kind, key, ids, identifier);
+                } else if (found && "block".equals(kind)) {
+                    readBlockProperties(handles, key, value);
                 }
             } catch (ReflectiveOperationException | RuntimeException rb) {
                 LOG.warning("Registry readback unavailable: " + rb);
