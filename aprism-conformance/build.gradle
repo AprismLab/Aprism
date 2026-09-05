@@ -1,0 +1,26 @@
+// Aprism Conformance - executable capability coverage kit (v26.9-Alpha.1)
+// GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+
+plugins {
+    id 'application'
+}
+
+dependencies {
+    api project(':aprism-api')
+    api project(':aprism-manifest')
+    api project(':aprism-loader-core')
+
+    testImplementation libs.bundles.testing
+}
+
+application {
+    mainClass = 'com.aprism.conformance.ConformanceKit'
+}
+
+tasks.register('conformanceReport', JavaExec) {
+    group = 'verification'
+    description = 'Runs every conformance probe and writes build/conformance/matrix.json'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.aprism.conformance.ConformanceKit'
+    args '--out', layout.buildDirectory.file('conformance/matrix.json').get().asFile.absolutePath
+}
