@@ -380,6 +380,17 @@ public final class AprismRuntime {
     }
     //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
+    private final com.aprism.loader.livectx.LiveContextTracker liveContextTracker =
+            new com.aprism.loader.livectx.LiveContextTracker();
+
+    /**
+     * @return the live context tracker for transition reporting and binder
+     *         triggers (v26.9-Alpha.3)
+     */
+    public com.aprism.loader.livectx.LiveContextTracker getLiveContextTracker() {
+        return liveContextTracker;
+    }
+
     /**
      * @return the loaded Mojang mappings, or null when no mapping was supplied
      */
@@ -1430,8 +1441,46 @@ public final class AprismRuntime {
                 // integrated server (and its dispatcher) comes alive.
                 cmdBinder.bindWhenAvailable(1800000);
             }
+            // v26.9-Alpha.3: push-based twin of the poller above - the
+            // moment the live context tracker hears a world join, the bind
+            // runs without any polling. Idempotent alongside the poller;
+            // once vanilla hooks report transitions (Alpha.7 seam) the
+            // poller can be retired.
+            cmdBinder.bindOnLiveContext(liveContextTracker);
         } catch (Throwable t) {
             LOG.warning("Command binding failed: " + t);
+        }
+        // v26.9-Alpha.3: opt-in content rebind on world joins (config
+        // reload style scenarios). Default OFF: the v26.8-proven post-
+        // bootstrap direct bind stays the only automatic content path.
+        if ("true".equalsIgnoreCase(System.getProperty("aprism.rebindOnWorldJoin"))) {
+            liveContextTracker.addListener(
+                    new com.aprism.loader.livectx.ContentBindTrigger(
+                            () -> {
+                                try {
+                                    ContentBindingRunner.bindNow(gameRegistries,
+                                            mcProfile == McProfile.REMAPPED,
+                                            officialMappings);
+                                } catch (Throwable t) {
+                                    LOG.warning("World-join rebind failed: " + t);
+                                }
+                            },
+                            true));
+            LOG.info("Content rebind on world join enabled (aprism.rebindOnWorldJoin)");
+        }
+        // v26.9-Alpha.3: report the post-dispatch state into the live
+        // context tracker (push, never polled).
+        String sideKey = side == null ? "client" : side.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("server".equals(sideKey)) {
+            liveContextTracker.transition(
+                    com.aprism.loader.livectx.LiveContext.Side.SERVER,
+                    com.aprism.loader.livectx.LiveContext.State.MENU,
+                    "dispatch complete");
+        } else {
+            liveContextTracker.transition(
+                    com.aprism.loader.livectx.LiveContext.Side.CLIENT,
+                    com.aprism.loader.livectx.LiveContext.State.MENU,
+                    "dispatch complete");
         }
         // v26.7-Alpha.3: bind key bindings into the live input system when a
         // client is discoverable (Minecraft.getInstance()); fail-closed

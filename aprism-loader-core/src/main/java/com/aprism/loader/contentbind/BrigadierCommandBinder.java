@@ -145,6 +145,44 @@ public final class BrigadierCommandBinder {
         poller.start();
     }
 
+    /**
+     * Push-based counterpart of {@link #bindWhenAvailable(long)}
+     * (v26.9-Alpha.3): binds once when the live context tracker reports a
+     * world join, with no polling thread at all. Registered as a one-shot
+     * listener per world join; safe alongside the poller (binds are
+     * idempotent overwrites).
+     *
+     * @param tracker the live context tracker to subscribe to
+     */
+    public void bindOnLiveContext(
+            com.aprism.loader.livectx.LiveContextTracker tracker) {
+        //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        tracker.addListener(new com.aprism.loader.livectx.BindTrigger() {
+            private volatile boolean bound;
+
+            @Override
+            public void onTransition(com.aprism.loader.livectx.LiveContextTransition t) {
+                if (bound
+                        || t.side() != com.aprism.loader.livectx.LiveContext.Side.CLIENT
+                        || t.to() != com.aprism.loader.livectx.LiveContext.State.IN_WORLD) {
+                    return;
+                }
+                try {
+                    Object d = LiveInstanceDiscovery.integratedCommandDispatcher();
+                    if (d == null) {
+                        return;
+                    }
+                    bound = true;
+                    attachDispatcher(d);
+                    LOG.info("Live command dispatcher bound via live-context trigger");
+                    bindAll();
+                } catch (RuntimeException e) {
+                    LOG.warning("Triggered command binding failed: " + e);
+                }
+            }
+        });
+    }
+
     private BindResult bindOne(Object dispatcher, CommandSpec spec) {
         try {
             ClassLoader loader = dispatcher.getClass().getClassLoader();
