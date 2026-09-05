@@ -231,6 +231,14 @@ public final class TinyMappings {
     }
 
     /**
+     * Read-only view of the intermediary (namespace-1) class names, used by
+     * the cross-map chain validation (v26.9-Alpha.2).
+     */
+    public java.util.Set<String> intermediaryClassNames() {
+        return java.util.Collections.unmodifiableSet(classReverse.keySet());
+    }
+
+    /**
      * @return the number of mapped methods
      */
     public int methodCount() {
