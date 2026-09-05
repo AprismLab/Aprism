@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.aprism.conformance.probe.CommandsProbe;
 import com.aprism.conformance.probe.DeferredAreasProbe;
+import com.aprism.conformance.probe.EventInteropProbe;
 import com.aprism.conformance.probe.EventsProbe;
 import com.aprism.conformance.probe.LifecycleProbe;
 import com.aprism.conformance.probe.LiveContextProbe;
@@ -39,7 +40,8 @@ public final class ConformanceKit {
         CoverageMatrix matrix = new CoverageMatrix();
         List<Probe> probes = List.of(new LifecycleProbe(), new LiveContextProbe(),
                 new RegistryProbe(), new RegistryInteropProbe(),
-                new EventsProbe(), new CommandsProbe(), new DeferredAreasProbe());
+                new EventsProbe(), new EventInteropProbe(),
+                new CommandsProbe(), new DeferredAreasProbe());
         for (Probe probe : probes) {
             ProbeResult result = probe.run();
             for (CoverageMatrix.Cell cell : cellsFor(probe, result)) {
