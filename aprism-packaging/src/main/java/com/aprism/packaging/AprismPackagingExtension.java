@@ -25,6 +25,40 @@ public class AprismPackagingExtension {
     private List<String> nativeTargets = new ArrayList<>();
     private String minecraftEdition;
     private String minecraftVersion;
+    private String aprismBaseline;
+    private boolean baselineCheck = true;
+
+    /**
+     * @return the loader version this mod is compiled against; the manifest's
+     *         {@code depends.aprism} floor must not be below it
+     *         (v26.9-Alpha.8)
+     */
+    public String getAprismBaseline() {
+        return aprismBaseline;
+    }
+
+    /**
+     * @param aprismBaseline the compiled-against loader version, e.g.
+     *        {@code v26.8} or {@code 26.8}
+     */
+    public void setAprismBaseline(String aprismBaseline) {
+        this.aprismBaseline = aprismBaseline;
+    }
+
+    /**
+     * @return whether the manifest baseline check runs during packaging
+     */
+    public boolean isBaselineCheck() {
+        return baselineCheck;
+    }
+
+    /**
+     * @param baselineCheck set false to skip the floor check (escape hatch for
+     *        intentionally broad artifacts; default true)
+     */
+    public void setBaselineCheck(boolean baselineCheck) {
+        this.baselineCheck = baselineCheck;
+    }
 
     /**
      * @return the manifest file path, relative to the project directory

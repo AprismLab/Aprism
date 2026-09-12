@@ -46,7 +46,7 @@ class PackageAjeTaskTest {
               "environment": "*",
               "entrypoints": {"main": ["com.example.ExampleMod"]},
               "mixins": [],
-              "depends": {},
+              "depends": {"aprism": ">=26.9-Alpha.8"},
               "platforms": {},
               "accessWidener": null,
               "provides": [],
@@ -68,6 +68,7 @@ class PackageAjeTaskTest {
                 version = '1.0.0'
                 aprismPackaging {
                     manifestFile = 'aprism.manifest.json'
+                    aprismBaseline = 'v26.9-Alpha.8'
                 }
                 """);
         Files.writeString(projectDir.resolve("aprism.manifest.json"), MANIFEST);

@@ -14,6 +14,7 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import org.gradle.api.DefaultTask;
@@ -22,6 +23,7 @@ import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
@@ -111,6 +113,20 @@ public abstract class PackageAjeTask extends DefaultTask {
     public abstract DirectoryProperty getOutputDir();
 
     /**
+     * @return the loader version the mod is compiled against; the manifest
+     *         floor must not be below it (v26.9-Alpha.8)
+     */
+    @Input
+    @Optional
+    public abstract Property<String> getAprismBaseline();
+
+    /**
+     * @return whether the manifest baseline check runs (default true)
+     */
+    @Input
+    public abstract Property<Boolean> getBaselineCheck();
+
+    /**
      * Assembles the {@code .aje} archive from the configured inputs.
      *
      * @throws IOException if the archive cannot be written
@@ -121,6 +137,7 @@ public abstract class PackageAjeTask extends DefaultTask {
         JsonObject manifest = parseManifest(manifestFile);
         String modId = requireField(manifest, "id");
         String version = requireField(manifest, "version");
+        enforceBaselineFloor(manifest);
 
         File mainJar = getMainJar().getAsFile().getOrNull();
         if (mainJar == null || !mainJar.isFile()) {
@@ -147,6 +164,49 @@ public abstract class PackageAjeTask extends DefaultTask {
         }
 
         getLogger().lifecycle("Packaged {} (mod: {} {})", output, modId, version);
+    }
+
+    /**
+     * Refuses to package an archive whose {@code depends.aprism} floor is
+     * below the declared compile baseline (v26.9-Alpha.8). This is the guard
+     * for the class of defect where an artifact compiled against a newer
+     * loader advertises an old floor, letting an old loader attempt the load
+     * and fail inside the agent.
+     *
+     * @param manifest the parsed manifest
+     */
+    private void enforceBaselineFloor(JsonObject manifest) {
+        if (!getBaselineCheck().getOrElse(Boolean.TRUE)) {
+            getLogger().info("Manifest baseline check disabled for {}",
+                    getManifestFile().getAsFile().get().getName());
+            return;
+        }
+        String baseline = getAprismBaseline().getOrNull();
+        String dependsAprism = null;
+        JsonElement depends = manifest.get("depends");
+        if (depends != null && depends.isJsonObject()) {
+            JsonElement aprism = depends.getAsJsonObject().get("aprism");
+            if (aprism != null && aprism.isJsonPrimitive()) {
+                dependsAprism = aprism.getAsString();
+            }
+        }
+        ManifestBaselineCheck.Result result =
+                ManifestBaselineCheck.check(dependsAprism, baseline);
+        if (!result.ok()) {
+            StringBuilder message = new StringBuilder(
+                    "Aprism packaging refused: manifest baseline check failed for ")
+                    .append(getManifestFile().getAsFile().get().getName()).append('.');
+            for (String problem : result.problems()) {
+                message.append(System.lineSeparator()).append("  - ").append(problem);
+            }
+            message.append(System.lineSeparator())
+                    .append("  Set aprismPackaging.aprismBaseline (or fix "
+                            + "depends.aprism), or disable with "
+                            + "aprismPackaging.baselineCheck = false.");
+            throw new GradleException(message.toString());
+        }
+        getLogger().info("Manifest baseline check passed (baseline {}, floor {})",
+                baseline == null ? "<unset>" : baseline, dependsAprism);
     }
 
     /**

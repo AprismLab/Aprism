@@ -1,4 +1,4 @@
-{
+﻿{
   "schemaVersion": 1,
   "id": "examplemod",
   "version": "1.0.0",
@@ -9,7 +9,7 @@
     "main": ["com.example.ExampleMod"]
   },
   "mixins": [],
-  "depends": {},
+  "depends": {"aprism": ">=26.8"},
   "platforms": {},
   "accessWidener": null,
   "provides": [],

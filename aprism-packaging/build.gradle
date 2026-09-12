@@ -7,7 +7,20 @@ plugins {
 }
 
 group = 'com.aprism'
-version = 'v26.0-Alpha.1'
+// The plugin version IS the loader baseline it stamps into .aje manifests
+// (v26.9-Alpha.8). Keep it in step with the loader line in gradle.properties.
+version = providers.gradleProperty('aprismVersion').getOrElse('v26.9-Alpha.8')
+
+// Expose the version as the package implementation version so the plugin can
+// resolve its own baseline at runtime (getImplementationVersion()).
+tasks.named('jar') {
+    manifest {
+        attributes(
+            'Implementation-Title': 'Aprism Packaging',
+            'Implementation-Version': project.version
+        )
+    }
+}
 
 // Declared at project level (not settings level) so that a global init script
 // adding repositories cannot shadow these.

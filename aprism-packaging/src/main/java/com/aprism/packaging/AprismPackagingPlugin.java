@@ -21,6 +21,20 @@ public final class AprismPackagingPlugin implements Plugin<Project> {
     /** The name of the Aprism packaging extension. */
     public static final String EXTENSION_NAME = "aprismPackaging";
 
+    /**
+     * Resolves the loader baseline this plugin build ships with, reading the
+     * plugin jar's Implementation-Version (set from the loader line) so a mod
+     * that declares no baseline still gets the correct floor
+     * (v26.9-Alpha.8).
+     *
+     * @return the baseline version, or null when unavailable
+     */
+    static String resolveBaseline() {
+        Package pkg = AprismPackagingPlugin.class.getPackage();
+        String version = pkg == null ? null : pkg.getImplementationVersion();
+        return version == null || version.isBlank() ? null : version;
+    }
+
     @Override
     public void apply(Project project) {
         AprismPackagingExtension ext =
@@ -65,6 +79,17 @@ public final class AprismPackagingPlugin implements Plugin<Project> {
                 task.getLib().from(project.fileTree(libRoot));
             }
             task.getOutputDir().set(project.file(ext.getOutputDir()));
+            // v26.9-Alpha.8: manifest baseline floor enforcement. The baseline
+            // defaults to the plugin's own version (the loader line this plugin
+            // build ships with) unless the build script overrides it.
+            task.getAprismBaseline().set(project.provider(() -> {
+                String declared = ext.getAprismBaseline();
+                if (declared != null && !declared.isBlank()) {
+                    return declared;
+                }
+                return resolveBaseline();
+            }));
+            task.getBaselineCheck().set(project.provider(ext::isBaselineCheck));
         });
 
         project.getTasks().register("packageAbe", PackageAbeTask.class, task -> {
