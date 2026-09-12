@@ -8,6 +8,7 @@ import com.aprism.conformance.probe.CommandsProbe;
 import com.aprism.conformance.probe.DeferredAreasProbe;
 import com.aprism.conformance.probe.EventInteropProbe;
 import com.aprism.conformance.probe.EventsProbe;
+import com.aprism.conformance.probe.HostInteropProbe;
 import com.aprism.conformance.probe.LifecycleProbe;
 import com.aprism.conformance.probe.LiveContextProbe;
 import com.aprism.conformance.probe.NetworkInteropProbe;
@@ -43,7 +44,7 @@ public final class ConformanceKit {
                 new RegistryProbe(), new RegistryInteropProbe(),
                 new EventsProbe(), new EventInteropProbe(),
                 new CommandsProbe(), new NetworkInteropProbe(),
-                new DeferredAreasProbe());
+                new HostInteropProbe(), new DeferredAreasProbe());
         for (Probe probe : probes) {
             ProbeResult result = probe.run();
             for (CoverageMatrix.Cell cell : cellsFor(probe, result)) {
