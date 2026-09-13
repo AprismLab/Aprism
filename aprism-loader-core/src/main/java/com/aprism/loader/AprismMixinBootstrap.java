@@ -90,13 +90,22 @@ public final class AprismMixinBootstrap {
                 MixinBootstrap.init();
                 environmentInitialized = true;
                 LOG.info("SpongePowered Mixin environment initialized (service: Aprism)");
-                // The active transformer MUST be registered before MixinExtras
-                // initializes: MixinInternals.getExtensions() dereferences
+                // The active transformer MUST be registered before mods weave:
+                // MixinInternals.getExtensions() dereferences
                 // MixinEnvironment.getActiveTransformer() to register Mixin's
-                // transformer extensions. Under Fabric the transformer exists
-                // by this point; here we own the sequence, so acquire first.
+                // transformer extensions.
                 acquireTransformer();
-                initializeMixinExtras();
+                // NOTE (v26.9-Alpha.7): MixinExtras is deliberately NOT
+                // initialized here. It bootstraps itself at weave time
+                // ("Initializing MixinExtras via MixinExtrasServiceImpl(version=...)")
+                // through its own service/extension hooks. Forcing it early from
+                // premain produced a SECOND initialization later, and
+                // MixinExtrasServiceImpl.takeControlFrom() de-initializes the
+                // earlier service - which dropped the injection-point specifier
+                // registration. Every @ModifyExpressionValue/@WrapOperation mixin
+                // then failed with "MIXINEXTRAS:EXPRESSION is not a valid
+                // injection point specifier" (Lithium weave failures, world load
+                // crash). Let MixinExtras own its own lifecycle, as under Fabric.
                 fixUndetectedSide();
                 alignCompatibilityLevel();
             } catch (Throwable t) {
@@ -149,19 +158,26 @@ public final class AprismMixinBootstrap {
     /**
      * Initializes MixinExtras when it is present on the classpath.
      *
-     * <p>Why this matters: Fabric Loader bundles MixinExtras upstream and
-     * modern Fabric mods (Lithium, and most others) compile their mixin
-     * classes against {@code com.llamalad7.mixinextras.*} injectors and
-     * sugars. When those classes are missing, Mixin fails to LOAD the
-     * supporting classes during weave and every mixin that uses MixinExtras
-     * features is silently skipped ("Mixin apply ... failed"). Partial
-     * application then breaks internal invariants inside the mod itself
-     * (observed with Lithium 0.25.3 on MC 26.2: the dragon-portal pattern
-     * replacement mixin was skipped while a plain cast mixin applied,
-     * producing a ClassCastException at world load).
+     * <p><b>Called lazily via {@link #initializeMixinExtrasOnce()} - never from
+     * {@link #bootstrap}.</b> Timing is load-bearing: initializing at premain
+     * caused a second initialization at weave time, and
+     * {@code MixinExtrasServiceImpl.takeControlFrom()} then de-initialized the
+     * earlier service, dropping the injection-point specifier registration so
+     * every {@code @ModifyExpressionValue} / {@code @WrapOperation} mixin failed
+     * with "MIXINEXTRAS:EXPRESSION is not a valid injection point specifier".
+     * Initializing when the first mod config is offered keeps it to a single
+     * initialization, with the active transformer already registered.
      *
-     * <p>Failure here is non-fatal: mods that do not use MixinExtras are
-     * unaffected, and a missing library simply skips the bootstrap.
+     * <p>Why MixinExtras matters at all: Fabric Loader bundles it upstream and
+     * modern Fabric mods (Lithium, and most others) compile their mixin classes
+     * against {@code com.llamalad7.mixinextras.*} injectors and sugars. When the
+     * classes are absent, Mixin fails to LOAD the supporting classes during
+     * weave and every mixin that uses MixinExtras features is silently skipped
+     * ("Mixin apply ... failed"). Partial application then breaks internal
+     * invariants inside the mod itself (observed with Lithium 0.25.3 on MC 26.2:
+     * the dragon-portal pattern replacement mixin was skipped while a plain cast
+     * mixin applied, producing a ClassCastException at world load). Shipping the
+     * library in the agent jar is part of the fix; this call activates it.
      */
     private static void initializeMixinExtras() {
         try {
@@ -324,6 +340,14 @@ public final class AprismMixinBootstrap {
         if (offeredConfigs.contains(configName)) {
             return;
         }
+        // MixinExtras must exist before ANY mod config is woven, because mods
+        // compile against its injectors/sugars. Initialize it here - once, at
+        // the moment mods start registering - rather than at premain: doing it
+        // at premain caused a second initialization later and
+        // takeControlFrom() de-initialized the first, dropping the
+        // injection-point specifier registration (MIXINEXTRAS:EXPRESSION
+        // unresolvable -> every MixinExtras mixin failed to apply).
+        initializeMixinExtrasOnce();
         try {
             Mixins.addConfiguration(configName);
             offeredConfigs.add(configName);
@@ -334,6 +358,26 @@ public final class AprismMixinBootstrap {
             LOG.log(java.util.logging.Level.WARNING,
                     "Failed to register Mixin config " + configName, t);
         }
+    }
+
+    /** Guards {@link #initializeMixinExtras()} to a single call per JVM. */
+    private static boolean mixinExtrasInitialized;
+
+    /**
+     * Initializes MixinExtras exactly once, lazily, at the point mods begin
+     * registering their mixin configs.
+     *
+     * <p>The active transformer is guaranteed to exist by then
+     * ({@link #acquireTransformer()} ran during bootstrap), which
+     * {@code MixinInternals.registerExtension} requires when MixinExtras
+     * installs its {@code MixinTransformerExtension}.
+     */
+    private static synchronized void initializeMixinExtrasOnce() {
+        if (mixinExtrasInitialized) {
+            return;
+        }
+        mixinExtrasInitialized = true;
+        initializeMixinExtras();
     }
 
     /**
