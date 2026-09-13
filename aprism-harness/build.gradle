@@ -1,0 +1,20 @@
+// Aprism Harness - MDL/Despotes conformance harness (v26.9-Alpha.8)
+// Host/variant/artifact guards that are CI-runnable without a live game.
+// GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+
+plugins {
+    id 'application'
+}
+
+dependencies {
+    // The harness independently re-derives contract decisions (agent layout,
+    // manifest floor) rather than calling into the modules under test, so a
+    // regression in one side cannot hide behind agreement in the other.
+    implementation libs.gson
+
+    testImplementation libs.bundles.testing
+}
+
+application {
+    mainClass = 'com.aprism.harness.HarnessCli'
+}
