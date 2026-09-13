@@ -45,6 +45,48 @@ public final class ModDiscoverer {
      */
     public static final String FABRIC_LOADER_VERSION = "0.19.3";
 
+    // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+
+    /**
+     * v26.9-Alpha.8: whether a real Fabric host (Fabric Loader / Knot) is on
+     * the classpath. Mirrors the probe in {@code AprismMixinBootstrap}: under
+     * a Fabric host, jars carrying {@code fabric.mod.json} are loaded by the
+     * host loader and must not be claimed as Aprism mods — Aprism cannot
+     * satisfy Fabric modular dependency ids ({@code fabric-*-v1}) and claiming
+     * them aborts the boot in {@code DependencyResolver}.
+     *
+     * @return true when Fabric Loader classes are loadable
+     */
+    public static boolean isFabricHostPresent() {
+        for (String probe : new String[] {
+                "net.fabricmc.loader.impl.launch.knot.Knot",
+                "net.fabricmc.loader.api.FabricLoader"}) {
+            try {
+                Class.forName(probe, false, ModDiscoverer.class.getClassLoader());
+                return true;
+            } catch (Throwable ignored) {
+                // try next marker
+            }
+        }
+        return false;
+    }
+
+    /**
+     * v26.9-Alpha.8: whether the jar carries a {@code fabric.mod.json}
+     * manifest, i.e. it belongs to the Fabric host loader.
+     *
+     * @param jar candidate jar path
+     * @return true when the archive contains fabric.mod.json
+     */
+    public static boolean isFabricModJar(Path jar) {
+        try (FileSystem zip = FileSystems.newFileSystem(jar, (ClassLoader) null)) {
+            return Files.exists(zip.getPath("fabric.mod.json"));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+
     /** NeoForge loader key (registered by NeoForge-Support.aep). */
     public static final String NEOFORGE_KEY = "N";
 

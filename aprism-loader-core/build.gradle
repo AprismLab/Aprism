@@ -33,7 +33,16 @@ jar {
 // shaded and relocated to avoid clashes with the Minecraft classpath.
 // com.aprism.api and the agent entrypoints are NOT relocated (public API).
 shadowJar {
-    archiveFileName = "Aprism-${project.version}-${project.minecraftEdition}-${project.minecraftVersion}.jar"
+    // v26.9-Alpha.8: the fabric-host variant is a DISTINCT artifact so a host
+    // integration can never pick up the native-layout jar by mistake. The
+    // native layout keeps org.objectweb.asm unrelocated (Mixin's ASM-version
+    // detection requires it); the fabric-host layout relocates it because the
+    // Fabric host already ships ASM and Fabric Loader's verifyClasspath aborts
+    // on the duplicate package.
+    def fabricHost = project.findProperty('fabricVariant')
+    archiveFileName = fabricHost
+            ? "Aprism-${project.version}-${project.minecraftEdition}-${project.minecraftVersion}-fabric-host.jar"
+            : "Aprism-${project.version}-${project.minecraftEdition}-${project.minecraftVersion}.jar"
     manifest {
         attributes(
             'Premain-Class': 'com.aprism.loader.AprismAgent',
@@ -81,6 +90,10 @@ shadowJar {
     // NOTE: asmVersion is captured at CONFIGURATION time (outside the action) so
     // the closure stays configuration-cache-safe (no project/logger access inside).
     def asmVersion = libs.versions.asm.get()
+    // In the fabric-host layout ASM is relocated, so the named manifest section
+    // must point at the relocated package (Mixin reads it from whichever
+    // package it actually loads ASM from).
+    def asmSection = fabricHost ? 'aprism/libs/asm/' : 'org/objectweb/asm/'
     doLast {
         def jarFile = archiveFile.get().asFile
         def tmp = new File(jarFile.parentFile, jarFile.name + ".tmp")
@@ -94,7 +107,7 @@ shadowJar {
             def asmAttrs = new java.util.jar.Attributes()
             asmAttrs.putValue('Implementation-Title', 'ASM, a very small and fast Java bytecode manipulation framework')
             asmAttrs.putValue('Implementation-Version', asmVersion)
-            manifest.entries.put('org/objectweb/asm/', asmAttrs)
+            manifest.entries.put(asmSection, asmAttrs)
             // Rewrite the jar with the augmented manifest (skip duplicate names
             // that shadow's merged jar may contain, e.g. repeated maven metadata).
             new java.util.jar.JarOutputStream(new java.io.FileOutputStream(tmp), manifest).withCloseable { jos ->
@@ -113,4 +126,71 @@ shadowJar {
         jarFile.delete()
         tmp.renameTo(jarFile)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Agent jar layout verification (v26.9-Alpha.8)
+//
+// Encodes the per-host layout invariants so a regression is caught in-repo
+// instead of downstream (the Fabric Loader verifyClasspath abort reported by
+// Despotes Dev was a duplicate-package clash the build never checked for):
+//
+//   native layout       : org/objectweb/asm/** present (Mixin ASM-version
+//                         detection), org/spongepowered/** present (mod mixins
+//                         compile against the standard package).
+//   fabric-host layout  : org/objectweb/asm/** ABSENT (relocated to
+//                         aprism/libs/asm/**), org/spongepowered/** ABSENT.
+//
+// GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+// ---------------------------------------------------------------------------
+tasks.register('verifyAgentJar') {
+    group = 'verification'
+    description = 'Asserts the fat agent jar layout matches its host variant.'
+    dependsOn tasks.named('shadowJar')
+    def expectedFabricHost = project.findProperty('fabricVariant') != null
+    def jarProvider = tasks.named('shadowJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar)
+            .flatMap { it.archiveFile }
+    inputs.file(jarProvider)
+    doLast {
+        def jarFile = jarProvider.get().asFile
+        def names = []
+        new java.util.jar.JarFile(jarFile).withCloseable { jar ->
+            def entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                names << entries.nextElement().name
+            }
+        }
+        def hasAsm = names.any { it.startsWith('org/objectweb/asm/') }
+        def hasRelocatedAsm = names.any { it.startsWith('aprism/libs/asm/') }
+        def hasMixin = names.any { it.startsWith('org/spongepowered/') }
+        def problems = []
+        if (expectedFabricHost) {
+            if (hasAsm) {
+                problems << 'fabric-host jar must NOT ship org/objectweb/asm/** (host provides ASM; duplicates abort Fabric verifyClasspath)'
+            }
+            if (!hasRelocatedAsm) {
+                problems << 'fabric-host jar must ship the relocated aprism/libs/asm/** classes'
+            }
+            if (hasMixin) {
+                problems << 'fabric-host jar must NOT ship org/spongepowered/** (the host owns Mixin)'
+            }
+        } else {
+            if (!hasAsm) {
+                problems << 'native jar must ship org/objectweb/asm/** (Mixin ASM-version detection depends on it)'
+            }
+            if (!hasMixin) {
+                problems << 'native jar must ship org/spongepowered/** (mods compile mixins against it)'
+            }
+        }
+        if (!problems.isEmpty()) {
+            throw new GradleException("Agent jar layout verification failed for ${jarFile.name}:\n  - "
+                    + problems.join('\n  - '))
+        }
+        logger.lifecycle('Agent jar layout verified: {} (fabricHost={}, asm={}, relocatedAsm={}, mixin={})',
+                jarFile.name, expectedFabricHost, hasAsm, hasRelocatedAsm, hasMixin)
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyAgentJar')
 }

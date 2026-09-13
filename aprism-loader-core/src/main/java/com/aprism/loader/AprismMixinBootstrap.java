@@ -318,10 +318,114 @@ public final class AprismMixinBootstrap {
             // mixins by DOTTED class names, so transformedName must be dotted;
             // passing a slashed (internal) name makes hasMixinsFor fail and no
             // mixin is ever applied (the real-game weave bug).
-            return transformer.transformClassBytes(className, className, classBytes);
+            byte[] result = transformer.transformClassBytes(className, className, classBytes);
+            // v26.9-Alpha.7: materialize mixin-generated synthetic classes into
+            // the system classloader. A mixin carrying anonymous inner classes
+            // (e.g. Lithium's entity.brain mixins) makes the weave register
+            // generated Brain$Anonymous$<hash> classes in the transformer's
+            // SyntheticClassRegistry; vanilla code references them immediately
+            // after. Under the sharedClassSpace=system topology vanilla is
+            // defined by the built-in loader, which cannot consult Mixin for
+            // classes that exist in no jar - so the reference would CNFE.
+            // Mixin supports generation on demand:
+            // transformClassBytes(name, name, null) invokes generateClass for
+            // registered synthetic names - so generate the bytes now and
+            // define them directly into the system loader.
+            definePendingSyntheticClasses(className);
+            return result;
         } catch (Throwable t) {
             LOG.warning("Mixin transformation failed for " + className + ": " + t.getMessage());
             return classBytes;
+        }
+    }
+
+    /**
+     * Generates and defines the mixin-generated synthetic classes registered
+     * during the weave of {@code wovenClass} (e.g. {@code Brain$Anonymous$*}).
+     *
+     * <p>Option B of the synthetic-class fix design (FACT 2026-09-12c): keep
+     * the sharedClassSpace topology, close the gap by defining the generated
+     * classes directly into the system classloader right after the weave that
+     * produced them - strictly before vanilla code (e.g. Allay clinit) can
+     * reference them. A failure here is non-fatal per class: the affected
+     * reference then fails the same way it would without this hook, and the
+     * game continues.
+     */
+    private static void definePendingSyntheticClasses(String wovenClass) {
+        try {
+            Object registry = readSyntheticClassRegistry();
+            if (registry == null) {
+                return;
+            }
+            java.util.Map<?, ?> classes = readRegistryMap(registry);
+            if (classes == null) {
+                return;
+            }
+            ClassLoader systemLoader = ClassLoader.getSystemClassLoader();
+            java.lang.reflect.Method define = ClassLoader.class.getDeclaredMethod(
+                    "defineClass", String.class, byte[].class, int.class, int.class);
+            define.setAccessible(true);
+            for (java.util.Map.Entry<?, ?> e : classes.entrySet()) {
+                Object info = e.getValue();
+                String name = syntheticClassName(info);
+                if (name == null || !name.startsWith(wovenClass + "$")) {
+                    continue;
+                }
+                if (syntheticClassLoaded(info)) {
+                    continue;
+                }
+                try {
+                    byte[] generated = transformer.transformClassBytes(name, name, null);
+                    if (generated == null || generated.length == 0) {
+                        continue;
+                    }
+                    try {
+                        define.invoke(systemLoader, name, generated, 0, generated.length);
+                        LOG.fine("Defined mixin-generated synthetic class " + name);
+                    } catch (java.lang.reflect.InvocationTargetException dup) {
+                        // already defined elsewhere (e.g. by a prior run of this
+                        // hook in the same weave pass) - not a failure.
+                    }
+                } catch (Throwable perClass) {
+                    LOG.warning("Failed to materialize synthetic class " + name
+                            + ": " + perClass);
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warning("Synthetic class materialization failed for " + wovenClass
+                    + ": " + t);
+        }
+    }
+
+    /** Reads MixinTransformer.syntheticClassRegistry via reflection. */
+    private static Object readSyntheticClassRegistry() throws Exception {
+        java.lang.reflect.Field f = transformer.getClass().getDeclaredField(
+                "syntheticClassRegistry");
+        f.setAccessible(true);
+        return f.get(transformer);
+    }
+
+    /** Reads SyntheticClassRegistry.classes via reflection. */
+    private static java.util.Map<?, ?> readRegistryMap(Object registry) throws Exception {
+        java.lang.reflect.Field f = registry.getClass().getDeclaredField("classes");
+        f.setAccessible(true);
+        Object map = f.get(registry);
+        return map instanceof java.util.Map<?, ?> m ? m : null;
+    }
+
+    private static String syntheticClassName(Object info) {
+        try {
+            return (String) info.getClass().getMethod("getClassName").invoke(info);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static boolean syntheticClassLoaded(Object info) {
+        try {
+            return (Boolean) info.getClass().getMethod("isLoaded").invoke(info);
+        } catch (Throwable t) {
+            return false;
         }
     }
 
