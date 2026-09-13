@@ -237,7 +237,12 @@ public final class AprismClassTransformer implements ClassFileTransformer {
         }
         try {
             ClassReader reader = new ClassReader(bytes);
-            ClassWriter writer = new ClassWriter(reader, 0);
+            // COMPUTE_MAXS is REQUIRED: the injected LDC + INVOKESTATIC raises
+            // the method's stack requirement, and a max-stack that is too small
+            // makes the class fail verification. Without this flag the hook is
+            // injected into the bytes but silently never runs (verified live on
+            // 1.21.4: the class retransformed yet the callback never fired).
+            ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
             MethodHookTransformer transformer =
                     new MethodHookTransformer(Opcodes.ASM9, writer, className);
             reader.accept(transformer, 0);

@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.aprism.loader.AprismClassTransformer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
@@ -151,6 +153,53 @@ class MethodHookTest {
         int result = (int) loaded.getMethod("compute").invoke(instance);
 
         assertThat(result).isEqualTo(42);
+        assertThat(fired).containsExactly("compute");
+    }
+
+    @Test
+    void productionTransformerProducesExecutableHookBytecode() throws Exception {
+        // Regression guard (v26.9-Alpha.8): the PRODUCTION transformer path
+        // (AprismClassTransformer.applyMethodHooks) originally used
+        // ClassWriter(reader, 0) - no COMPUTE_MAXS - so the injected hook
+        // raised the method stack demand beyond the copied maxStack. The bytes
+        // changed but the class silently failed to run the hook live on 1.21.4.
+        List<String> fired = new ArrayList<>();
+        MethodHookRegistry.register(TARGET, "compute", "()I", () -> fired.add("compute"));
+
+        AprismClassTransformer transformer = new AprismClassTransformer();
+        byte[] hooked = transformer.transform(
+                getClass().getClassLoader(), TARGET, null, null, readClassBytes(TARGET));
+
+        assertThat(hooked).isNotNull();
+        ClassLoader child = new SingleClassLoader(
+                TARGET.replace('/', '.'), hooked, getClass().getClassLoader());
+        Class<?> loaded = child.loadClass(TARGET.replace('/', '.'));
+        Object instance = loaded.getDeclaredConstructor().newInstance();
+        int result = (int) loaded.getMethod("compute").invoke(instance);
+
+        assertThat(result).isEqualTo(42);
+        assertThat(fired).containsExactly("compute");
+    }
+
+    @Test
+    void retransformPathAlsoProducesExecutableHooks() throws Exception {
+        // Retransformation passes classBeingRedefined != null. The live 1.21.4
+        // run showed retransform reporting success yet the hook never firing,
+        // so this asserts the retransform-shaped call still yields executable
+        // hook bytecode (v26.9-Alpha.8).
+        List<String> fired = new ArrayList<>();
+        MethodHookRegistry.register(TARGET, "compute", "()I", () -> fired.add("compute"));
+
+        AprismClassTransformer transformer = new AprismClassTransformer();
+        byte[] hooked = transformer.transform(getClass().getClassLoader(), TARGET,
+                MethodHookTest.class, null, readClassBytes(TARGET));
+        assertThat(hooked).as("retransform must still rewrite the class").isNotNull();
+
+        ClassLoader child = new SingleClassLoader(
+                TARGET.replace('/', '.'), hooked, getClass().getClassLoader());
+        Class<?> loaded = child.loadClass(TARGET.replace('/', '.'));
+        Object instance = loaded.getDeclaredConstructor().newInstance();
+        assertThat((int) loaded.getMethod("compute").invoke(instance)).isEqualTo(42);
         assertThat(fired).containsExactly("compute");
     }
 
