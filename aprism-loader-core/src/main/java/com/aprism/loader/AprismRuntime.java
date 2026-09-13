@@ -1768,7 +1768,22 @@ public final class AprismRuntime {
         for (String className : entrypoints) {
             try {
                 Class<?> clazz = classLoader.loadClass(className);
-                Object instance = clazz.getDeclaredConstructor().newInstance();
+
+                // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+                //
+                // v26.9-Alpha.9: reuse the retained instance when the
+                // entrypoint class matches it. The contract (FACT.md §3)
+                // states the first instance is retained on the container and
+                // phases dispatch on the same instance; constructing a fresh
+                // entrypoint per dispatch broke stateful cross-phase fields
+                // (a field set in onInitialize vanished by onSetup).
+                Object retained = container.getInstance();
+                Object instance;
+                if (retained != null && clazz.isInstance(retained)) {
+                    instance = retained;
+                } else {
+                    instance = clazz.getDeclaredConstructor().newInstance();
+                }
                 if (instance instanceof IAprismMod mod) {
                     // Aprism-native mod: full lifecycle dispatch
                     invokePhaseMethod(mod, context, phase);

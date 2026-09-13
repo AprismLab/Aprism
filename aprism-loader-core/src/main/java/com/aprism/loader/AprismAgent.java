@@ -70,7 +70,24 @@ public final class AprismAgent {
      * @param inst the instrumentation handle
      * @param args the agent arguments (may be {@code null} or empty)
      */
+    /**
+     * The instrumentation handle the JVM supplied, retained so that in-process
+     * components (live harness, diagnostics) can reason about loaded classes
+     * and request retransformation without re-deriving it
+     * (v26.9-Alpha.8).
+     */
+    private static volatile Instrumentation retainedInstrumentation;
+
+    /**
+     * @return the instrumentation handle from premain/agentmain, or null when
+     *         the agent was not attached
+     */
+    public static Instrumentation getInstrumentation() {
+        return retainedInstrumentation;
+    }
+
     private static void initialize(Instrumentation inst, String args) {
+        retainedInstrumentation = inst;
         Map<String, String> kv = parseArgs(args);
         // OPEN-3 (closed in v26.0): announce the agent's presence so that
         // companion loaders (e.g. AprismPrismate) can detect a mutually

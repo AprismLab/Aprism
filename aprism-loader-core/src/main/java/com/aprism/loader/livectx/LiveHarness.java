@@ -44,6 +44,23 @@ public final class LiveHarness {
     private static final String SET_SCREEN_DESC =
             "(Lnet/minecraft/client/gui/screens/Screen;)V";
 
+    /**
+     * The world-join signal that modern Minecraft actually invokes
+     * (v26.9-Alpha.8).
+     *
+     * <p>{@code Minecraft.setLevel} exists but 1.21.4 does not route a join
+     * through it (verified with javap on the genuine client: the level lives in
+     * a public field and is assigned directly). {@code ClientPacketListener.
+     * handleLogin} IS invoked exactly once per world join, so it is the
+     * reliable, class-loading-safe signal: it is a method hook, so no
+     * background thread ever has to touch game classes.
+     */
+    private static final String PACKET_LISTENER_CLASS =
+            "net.minecraft.client.multiplayer.ClientPacketListener";
+    private static final String HANDLE_LOGIN = "handleLogin";
+    private static final String HANDLE_LOGIN_DESC =
+            "(Lnet/minecraft/network/protocol/game/ClientboundLoginPacket;)V";
+
     private final LiveContextTracker tracker;
     private final Path outputDir;
     private final long premainNanos = System.nanoTime();
@@ -127,6 +144,25 @@ public final class LiveHarness {
                 writeReport();
             }
         });
+        // Primary join signal: ClientPacketListener.handleLogin, which 1.21.4
+        // (and every modern version) really invokes once per world join.
+        String listenerOwner = translateClass(mappings, PACKET_LISTENER_CLASS);
+        String loginDesc = translateDescriptor(mappings, HANDLE_LOGIN_DESC);
+        installHook(listenerOwner, HANDLE_LOGIN, loginDesc, "world-join(login)", () -> {
+            if (worldJoinNanos.compareAndSet(-1, System.nanoTime())) {
+                worldDetail = "handleLogin observed on " + listenerOwner;
+                tracker.transition(LiveContext.Side.CLIENT,
+                        LiveContext.State.IN_WORLD, worldDetail);
+                LOG.info("[harness] world join observed via handleLogin");
+                writeReport();
+            }
+        });
+        // Method hooks are injected when the transformer sees the class load.
+        // By deferred-install time the client classes are already loaded, so a
+        // retransform is required for the hooks to take effect (the agent
+        // declares Can-Retransform-Classes: true). Without this the hooks
+        // register cleanly but never fire - verified live.
+        retransformTargets(owner, listenerOwner);
         installHook(owner, SET_SCREEN, screenDesc, "screen", this::captureScreen);
         // NOTE (v26.9-Alpha.8): a background field sampler was implemented and
         // then REMOVED. Verified live on the genuine 1.21.4 client, loading the
@@ -139,6 +175,56 @@ public final class LiveHarness {
         // stay; field-based observation needs a safe mechanism and is tracked
         // as follow-up work.
         writeReport();
+    }
+
+    /**
+     * Retransforms the already-loaded hook owner classes so the freshly
+     * registered hooks are actually injected (v26.9-Alpha.8). Fail-open: an
+     * unavailable class or unsupported retransform is recorded and the harness
+     * continues with whatever hooks do apply.
+     *
+     * @param ownerNames the resolved (runtime) owner class names
+     */
+    private void retransformTargets(String... ownerNames) {
+        com.aprism.loader.AprismRuntime runtime =
+                com.aprism.loader.AprismRuntime.instance();
+        com.aprism.loader.lowlevel.ClassRedefiner redefiner =
+                runtime.getClassRedefiner();
+        if (redefiner == null) {
+            // Fall back to the agent's retained handle: the runtime may have
+            // been initialized earlier without one (idempotent init guard).
+            java.lang.instrument.Instrumentation inst =
+                    com.aprism.loader.AprismAgent.getInstrumentation();
+            if (inst != null) {
+                redefiner = new com.aprism.loader.lowlevel.ClassRedefiner(inst);
+                LOG.info("[harness] using the agent's retained instrumentation handle");
+            }
+        }
+        if (redefiner == null) {
+            diagnostics.add("retransform unavailable: no instrumentation handle");
+            return;
+        }
+        java.util.List<Class<?>> targets = new java.util.ArrayList<>();
+        for (String ownerName : ownerNames) {
+            try {
+                targets.add(Class.forName(ownerName.replace('/', '.'), false,
+                        ClassLoader.getSystemClassLoader()));
+            } catch (Throwable notLoadedYet) {
+                // Not loaded yet: the transformer will apply the hook on load.
+                LOG.info("[harness] class not loaded yet, hook applies on load: "
+                        + ownerName);
+            }
+        }
+        for (Class<?> target : targets) {
+            try {
+                int count = redefiner.retransform(target);
+                LOG.info("[harness] retransformed " + target.getName()
+                        + " (count=" + count + ")");
+            } catch (Throwable retransformFailure) {
+                diagnostics.add("retransform " + target.getName() + ": "
+                        + retransformFailure);
+            }
+        }
     }
 
     /**

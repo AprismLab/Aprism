@@ -289,6 +289,27 @@ class AprismRuntimeTest {
         }
 
         @Test
+        void instanceIdentityPreservedAcrossPhases() throws Exception {
+            // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+            //
+            // v26.9-Alpha.9 regression test: the retained instance must receive
+            // every phase so stateful cross-phase fields survive (contract §3).
+            // Before the fix the runtime constructed a fresh entrypoint per
+            // dispatch, so the retained instance only ever saw PREINIT.
+            writeAje(gameRoot.resolve("mods").resolve("alpha.aje"), "alpha", "1.0.0",
+                    RECORDING_MOD_CLASS, null);
+
+            AprismRuntime.instance().performLoad(gameRoot, gameRoot.resolve("aprism-extensions"));
+            AprismRuntime.instance().invokeCommonLifecycle();
+
+            RecordingMod mod = (RecordingMod) AprismRuntime.instance()
+                    .getMod("alpha").getInstance();
+            assertThat(mod).isNotNull();
+            assertThat(mod.getPhases()).containsExactly(
+                    "PREINIT", "INIT", "SETUP", "COMPLETE");
+        }
+
+        @Test
         void contextBoundToMod() throws Exception {
             writeAje(gameRoot.resolve("mods").resolve("alpha.aje"), "alpha", "1.0.0",
                     RECORDING_MOD_CLASS, null);
