@@ -24,6 +24,10 @@ mixin = "0.16.5+mixin.0.8.7"
 # MixinExtras: Fabric Loader bundles it upstream (mods like Lithium compile
 # their mixins against it); Aprism must ship the same classes or every mod
 # mixin using MixinExtras injectors/sugars fails to apply.
+# NOTE: the version is NOT resolved from Maven Central. Lithium-class mods
+# require >=0.5.3 and Central tops out at 0.5.0-beta.5. The classes bundled
+# in the fat agent jar are extracted from Fabric Loader's embedded
+# mixinextras-fabric jar (see loader-core build.gradle).
 mixinextras = "0.5.0-beta.5"
 asm = "9.10.1"
 
