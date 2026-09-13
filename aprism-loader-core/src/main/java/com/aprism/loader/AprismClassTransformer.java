@@ -90,12 +90,41 @@ public final class AprismClassTransformer implements ClassFileTransformer {
         if (className == null) {
             return null;
         }
+        // v26.9-Alpha.8 safety gate: never touch JDK/platform classes. Loading
+        // or retransforming java.lang.invoke.* from inside a transformer makes
+        // the JVM re-enter class loading while it is mid-transform of
+        // java.lang.invoke.MethodHandle, which was verified live to abort the
+        // agent load:
+        //   ClassCircularityError: java/lang/invoke/MethodHandle$1
+        //   java.lang.instrument ASSERTION FAILED: agent load/premain failed
+        // Minecraft never lives in these packages, so skipping them costs
+        // nothing and removes the failure mode entirely.
+        if (isPlatformClass(className)) {
+            return null;
+        }
         byte[] bytes = applyRegisteredTransformations(className, classfileBuffer);
         bytes = applyMixins(className, bytes);
         bytes = applyAccessWideners(className, bytes);
         bytes = applyMethodHooks(className, bytes);
         observeClass(className, bytes);
         return bytes;
+    }
+
+    /**
+     * @param className the slashed binary class name
+     * @return true when the class belongs to the JDK/platform layers that the
+     *         transformer must never rewrite
+     */
+    public static boolean isPlatformClass(String className) {
+        return className.startsWith("java/")
+                || className.startsWith("javax/")
+                || className.startsWith("jdk/")
+                || className.startsWith("sun/")
+                || className.startsWith("com/sun/")
+                || className.startsWith("org/w3c/dom/")
+                || className.startsWith("org/xml/sax/")
+                // Instrumentation/agent support classes must stay untouched.
+                || className.startsWith("java/lang/instrument/");
     }
 
     /**

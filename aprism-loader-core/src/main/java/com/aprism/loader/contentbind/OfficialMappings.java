@@ -158,6 +158,48 @@ public final class OfficialMappings {
     }
 
     /**
+     * Translates every object type inside a JVM method descriptor
+     * (v26.9-Alpha.8).
+     *
+     * <p>Live method hooks must name the runtime class AND every parameter
+     * and return type the runtime declares, so {@code (Lnet/minecraft/client/
+     * multiplayer/ClientLevel;)V} becomes e.g. {@code (Lgga;)V} on 1.21.4.
+     * Primitives, arrays, and unmapped (library) types pass through, and
+     * unmapped types are returned with their dots converted to slashes so the
+     * descriptor stays structurally valid.
+     *
+     * @param descriptor the official JVM descriptor
+     * @return the runtime descriptor
+     */
+    public String runtimeDescriptor(String descriptor) {
+        if (descriptor == null || descriptor.isEmpty()) {
+            return descriptor;
+        }
+        StringBuilder out = new StringBuilder(descriptor.length());
+        int i = 0;
+        while (i < descriptor.length()) {
+            char c = descriptor.charAt(i);
+            if (c == 'L') {
+                int end = descriptor.indexOf(';', i);
+                if (end < 0) {
+                    out.append(descriptor.substring(i));
+                    break;
+                }
+                String officialType = descriptor.substring(i + 1, end)
+                        .replace('/', '.');
+                out.append('L')
+                        .append(runtimeName(officialType).replace('.', '/'))
+                        .append(';');
+                i = end + 1;
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    /**
      * Resolves an official method within an official class to its runtime
      * name, disambiguating same-name overloads by parameter types
      * (v26.8-Alpha.9). Falls back to the name-only lookup when the exact

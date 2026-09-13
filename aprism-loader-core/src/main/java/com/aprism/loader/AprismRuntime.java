@@ -391,6 +391,17 @@ public final class AprismRuntime {
         return liveContextTracker;
     }
 
+    /** The live conformance harness when enabled, otherwise null. */
+    private volatile com.aprism.loader.livectx.LiveHarness liveHarness;
+
+    /**
+     * @return the live conformance harness, or null when not enabled
+     *         (v26.9-Alpha.8)
+     */
+    public com.aprism.loader.livectx.LiveHarness getLiveHarness() {
+        return liveHarness;
+    }
+
     /**
      * @return the loaded Mojang mappings, or null when no mapping was supplied
      */
@@ -1168,6 +1179,20 @@ public final class AprismRuntime {
         ModDiscoverer discoverer = new ModDiscoverer();
         List<ModDiscoverer.DiscoveredMod> discovered = discoverer.discoverAll(gameRoot, loaderFolders);
 
+        // GitHub@NDBlockConnect | BlockConnect@StarsailsClover
+        //
+        // v26.9-Alpha.8: under a real Fabric host, jars carrying
+        // fabric.mod.json are loaded by the host loader (Knot). Claiming
+        // them as Aprism mods aborts the boot with
+        // DependencyResolutionException on Fabric modular dependency ids
+        // (fabric-api, fabric-resource-loader-v1) that no Aprism manifest
+        // can satisfy. Skip them before dependency resolution so the host
+        // owns its own mods and Aprism only loads its own artifacts.
+        if (ModDiscoverer.isFabricHostPresent()) {
+            discovered.removeIf(dm -> dm.format() == ModDiscoverer.ModFormat.JAR
+                    && ModDiscoverer.isFabricModJar(dm.path()));
+        }
+
         // Index discovered mods by id for lookup after dependency sort
         Map<String, ModDiscoverer.DiscoveredMod> discoveredById = new LinkedHashMap<>();
         for (ModDiscoverer.DiscoveredMod dm : discovered) {
@@ -1385,14 +1410,19 @@ public final class AprismRuntime {
                     + "dispatch until registries are frozen");
             GameBootstrapGate.onBootstrapped(() -> {
                 try {
-                    dispatchProductionStages(gameRoot, side);
+                    // v26.9-Alpha.8: record the bootstrap moment for harness
+                    // metrics before the deferred dispatch runs.
+                    if (liveHarness != null) {
+                        liveHarness.markBootstrap();
+                    }
+                    dispatchProductionStages(gameRoot, side, true);
                 } catch (DependencyResolutionException deferredFailure) {
                     LOG.warning("Deferred lifecycle dispatch failed: " + deferredFailure);
                 }
             });
             return;
         }
-        dispatchProductionStages(gameRoot, side);
+        dispatchProductionStages(gameRoot, side, false);
     }
 
     /**
@@ -1404,7 +1434,8 @@ public final class AprismRuntime {
      * @param gameRoot the game instance root
      * @param side     the distribution side ({@code client}, {@code server}, or {@code null})
      */
-    private void dispatchProductionStages(Path gameRoot, String side)
+    private void dispatchProductionStages(Path gameRoot, String side,
+            boolean deferredDispatch)
             throws DependencyResolutionException {
         invokeCommonLifecycle();
         // v26.7-Alpha.1: bind Aprism-native content into the real MC
@@ -1481,6 +1512,26 @@ public final class AprismRuntime {
                     com.aprism.loader.livectx.LiveContext.Side.CLIENT,
                     com.aprism.loader.livectx.LiveContext.State.MENU,
                     "dispatch complete");
+        }
+        // v26.9-Alpha.8: live conformance harness. Opt-in via the
+        // `harness=true` agent parameter so production runs are unaffected.
+        // INSTALLED ONLY ON A DEFERRED (post-bootstrap) DISPATCH: installing it
+        // during the synchronous premain path was verified to trip a
+        // class-loading circularity while the JVM was mid-transform of
+        // java.lang.invoke.MethodHandle
+        //   (ClassCircularityError: java/lang/invoke/MethodHandle$1 ->
+        //    java.lang.instrument ASSERTION FAILED: agent load/premain failed)
+        // so the harness must never pull classes in on the premain thread.
+        if (deferredDispatch
+                && "true".equalsIgnoreCase(System.getProperty("aprism.harness"))) {
+            try {
+                liveHarness = new com.aprism.loader.livectx.LiveHarness(
+                        liveContextTracker, gameRoot);
+                liveHarness.install(officialMappings);
+                LOG.info("Live conformance harness enabled (aprism-harness.json)");
+            } catch (Throwable t) {
+                LOG.warning("Live harness install failed: " + t);
+            }
         }
         // v26.7-Alpha.3: bind key bindings into the live input system when a
         // client is discoverable (Minecraft.getInstance()); fail-closed
@@ -2034,6 +2085,12 @@ public final class AprismRuntime {
         mcProfile = null;
         versionLineEntry = null;
         bytecodeRemapper = null;
+        // v26.9-Alpha.8: remove live harness hooks so a reload cycle starts
+        // from a clean hook registry.
+        if (liveHarness != null) {
+            liveHarness.uninstall();
+            liveHarness = null;
+        }
         //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
         officialMappings = null;
         gameRoot = null;

@@ -135,21 +135,39 @@ class ClassLoadObserverRegistryTest {
                 throw new RuntimeException("boom");
             });
 
-            byte[] bytes = readClassBytes(String.class);
-            byte[] result = transformer.transform(null, "java/lang/String", null, null, bytes);
+            byte[] bytes = readClassBytes(ClassLoadObserverRegistryTest.class);
+            byte[] result = transformer.transform(null, "com/aprism/loader/lowlevel/ClassLoadObserverRegistryTest", null, null, bytes);
 
             // A throwing observer must not break the pipeline: bytes are
             // returned unchanged and the good observer still fired.
             assertThat(result).isSameAs(bytes);
-            assertThat(seen).containsExactly("java/lang/String");
+            assertThat(seen).containsExactly(
+                    "com/aprism/loader/lowlevel/ClassLoadObserverRegistryTest");
         }
 
         @Test
+        void platformClassesAreNeverTransformed() throws Exception {
+            // v26.9-Alpha.8: rewriting java.lang.invoke (or any JDK package)
+            // from a transformer re-enters class loading mid-transform of
+            // MethodHandle and aborts agent load with ClassCircularityError.
+            assertThat(AprismClassTransformer.isPlatformClass("java/lang/invoke/MethodHandle$1")).isTrue();
+            assertThat(AprismClassTransformer.isPlatformClass("java/lang/String")).isTrue();
+            assertThat(AprismClassTransformer.isPlatformClass("jdk/internal/misc/Unsafe")).isTrue();
+            assertThat(AprismClassTransformer.isPlatformClass("sun/misc/Unsafe")).isTrue();
+            assertThat(AprismClassTransformer.isPlatformClass("net/minecraft/client/Minecraft")).isFalse();
+            assertThat(AprismClassTransformer.isPlatformClass("com/aprism/loader/AprismAgent")).isFalse();
+
+            AprismClassTransformer transformer = new AprismClassTransformer();
+            byte[] bytes = readClassBytes(ClassLoadObserverRegistryTest.class);
+            assertThat(transformer.transform(null, "java/lang/invoke/MethodHandle$1",
+                    null, null, bytes)).isNull();
+        }
+
         void transformWithoutObserversIsUnchanged() throws Exception {
             AprismClassTransformer transformer = new AprismClassTransformer();
-            byte[] bytes = readClassBytes(String.class);
+            byte[] bytes = readClassBytes(ClassLoadObserverRegistryTest.class);
 
-            byte[] result = transformer.transform(null, "java/lang/String", null, null, bytes);
+            byte[] result = transformer.transform(null, "com/aprism/loader/lowlevel/ClassLoadObserverRegistryTest", null, null, bytes);
 
             assertThat(result).isSameAs(bytes);
         }

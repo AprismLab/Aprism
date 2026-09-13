@@ -76,6 +76,12 @@ public final class AprismAgent {
         // companion loaders (e.g. AprismPrismate) can detect a mutually
         // exclusive Aprism agent in the same JVM and refuse to boot cleanly.
         System.setProperty("aprism.agent.active", "true");
+        // v26.9-Alpha.8: expose the opt-in live harness flag as a system
+        // property so the runtime can decide without re-parsing agent args.
+        String harnessArg = kv.get("harness");
+        if (harnessArg != null && !harnessArg.isBlank()) {
+            System.setProperty("aprism.harness", harnessArg.trim());
+        }
         try {
             AprismClassTransformer transformer = new AprismClassTransformer();
             inst.addTransformer(transformer, true);
@@ -111,9 +117,50 @@ public final class AprismAgent {
         } catch (Throwable t) {
             // Never terminate the game JVM from the agent. Record the failure
             // and continue; the game launches without (or with partial) Aprism.
-            java.util.logging.Logger.getLogger("AprismAgent").severe(
-                    "Aprism failed to initialize: " + t);
-            writeCrashReport(kv.get("gameRoot"), t);
+            //
+            // v26.9-Alpha.8 hardening: this path must not use the logging
+            // framework. During premain the JVM may be mid-transform of
+            // java.lang.invoke.MethodHandle, and java.util.logging's caller
+            // inference loads classes (StackStreamFactory ->
+            // DirectConstructorHandleAccessor), which re-enters class loading
+            // and turns a recoverable failure into
+            //   ClassCircularityError: java/lang/invoke/MethodHandle$1
+            //   java.lang.instrument ASSERTION FAILED: agent load/premain failed
+            // so the report goes straight to stderr and the crash file instead.
+            writeRawFailure(kv.get("gameRoot"), t);
+        }
+    }
+
+    /**
+     * Reports an agent startup failure without touching the logging framework
+     * or loading any further classes (v26.9-Alpha.8). All failure detail is
+     * rendered on the current thread with string concatenation only, then sent
+     * to {@code System.err} and the crash file.
+     *
+     * @param gameRootArg the game root argument (may be {@code null})
+     * @param t           the failure cause
+     */
+    private static void writeRawFailure(String gameRootArg, Throwable t) {
+        StringBuilder message = new StringBuilder(
+                "Aprism failed to initialize: ");
+        Throwable current = t;
+        int depth = 0;
+        while (current != null && depth < 8) {
+            message.append(System.lineSeparator()).append("  ");
+            message.append(current.getClass().getName()).append(": ");
+            message.append(String.valueOf(current.getMessage()));
+            current = current.getCause();
+            depth++;
+        }
+        try {
+            System.err.println(message);
+        } catch (Throwable ignored) {
+            // stderr may be unavailable during very early boot
+        }
+        try {
+            writeCrashReport(gameRootArg, t);
+        } catch (Throwable ignored) {
+            // best effort only
         }
     }
 
