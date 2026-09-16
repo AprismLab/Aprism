@@ -126,6 +126,28 @@ public final class LiveHarness {
      * @param mappings the loaded official mappings, or null on NO_REMAP
      */
     public void install(OfficialMappings mappings) {
+        earlyInstance = this;
+        // Premain-registered hooks (if requested) are applied now so the
+        // transformer injects on first load; the deferred-time registration
+        // below then only adds the game-event routed path.
+        boolean early = applyEarlyRegistration();
+        LOG.info("[harness] install: earlyRegistration=" + early);
+        if (early) {
+            // Premain registration already placed the join/probe/screen hooks
+            // into the shared registry, and the transformer injects them on
+            // first class load. Re-registering here would double-fire, so only
+            // the game-event routing and the retransform (both idempotent) run.
+            installJoinViaGameEvents(
+                    (mappings == null ? PACKET_LISTENER_CLASS
+                            : mappings.runtimeName(PACKET_LISTENER_CLASS))
+                            .replace('.', '/'),
+                    translateDescriptor(mappings, HANDLE_LOGIN_DESC));
+            retransformTargets(
+                    translateClass(mappings, CLIENT_CLASS),
+                    translateClass(mappings, PACKET_LISTENER_CLASS));
+            writeReport();
+            return;
+        }
         String owner = translateClass(mappings, CLIENT_CLASS);
         this.resolvedClientClass = owner;
         // The field shape checks must compare against the RUNTIME type names:
@@ -187,6 +209,155 @@ public final class LiveHarness {
         // stay; field-based observation needs a safe mechanism and is tracked
         // as follow-up work.
         writeReport();
+    }
+
+    /**
+     * Registers the harness hooks at AGENT PREMAIN time (v26.9-Alpha.8).
+     *
+     * <p>This exists because injection happens when the transformer sees a
+     * class load: registering after the client classes are already loaded
+     * requires a retransform, and the live 1.21.4 run showed retransform
+     * reporting success (count=1) while the injected dispatch never executed
+     * (a probe on the per-tick method stayed silent through a full world
+     * join). Registering at premain makes the transformer inject on the
+     * <em>first</em> load of the target classes, which needs no retransform.
+     *
+     * <p>Only strings and a callback are stored here - no game class is
+     * touched - so the premain class-loading hazard that forced the deferred
+     * install (ClassCircularityError on java.lang.invoke.MethodHandle) does
+     * not apply. The mapping translation is resolved later, at deferred
+     * install time, when the mappings and the live context are known; this
+     * method therefore registers the pre-translation "pending" hooks that
+     * {@link #install(OfficialMappings)} re-keys.
+     */
+    public static void registerHooksEarly(LiveContextTracker tracker,
+            OfficialMappings mappings) {
+        pendingEarly = true;
+        earlyTracker = tracker;
+        earlyMappings = mappings;
+        LOG.info("[harness] early hook registration requested at premain "
+                + "(mappings=" + (mappings == null ? "none" : mappings.size()
+                        + " classes") + ")");
+    }
+
+    /** Whether early registration was requested (install consumes it). */
+    private static volatile boolean pendingEarly;
+    /** The tracker the early registration targets (premain). */
+    private static volatile LiveContextTracker earlyTracker;
+    /** The mappings available at premain (null on NO_REMAP). */
+    private static volatile OfficialMappings earlyMappings;
+
+    /**
+     * @return true when early registration was requested at premain
+     */
+    public static boolean isEarlyRegistrationRequested() {
+        return pendingEarly;
+    }
+
+    /**
+     * Installs the registered hooks into the hook registry at PREMAIN time so
+     * the transformer injects them on the FIRST load of each target class
+     * (v26.9-Alpha.8). Only strings are registered - no game class is touched -
+     * which is why this is safe on the premain thread.
+     *
+     * @return true when the early registration completed
+     */
+    public static boolean applyEarlyRegistration() {
+        if (!pendingEarly) {
+            return false;
+        }
+        OfficialMappings mappings = earlyMappings;
+        String owner = (mappings == null ? CLIENT_CLASS
+                : mappings.runtimeName(CLIENT_CLASS)).replace('.', '/');
+        String listener = (mappings == null ? PACKET_LISTENER_CLASS
+                : mappings.runtimeName(PACKET_LISTENER_CLASS)).replace('.', '/');
+        String loginDesc = mappings == null ? HANDLE_LOGIN_DESC
+                : mappings.runtimeDescriptor(HANDLE_LOGIN_DESC);
+        String levelDesc = mappings == null ? SET_LEVEL_DESC
+                : mappings.runtimeDescriptor(SET_LEVEL_DESC);
+        String screenDesc = mappings == null ? SET_SCREEN_DESC
+                : mappings.runtimeDescriptor(SET_SCREEN_DESC);
+        LiveContextTracker tracker = earlyTracker;
+
+        earlyJoin = () -> markJoined(tracker,
+                "handleLogin observed on " + listener);
+        MethodHookRegistry.register(listener, HANDLE_LOGIN, loginDesc,
+                earlyJoin);
+        earlyProbe = () -> markProbe(owner, listener);
+        MethodHookRegistry.register(listener, "tick", "()V", earlyProbe);
+        earlyLevel = () -> markJoined(tracker, "setLevel observed on " + owner);
+        MethodHookRegistry.register(owner, SET_LEVEL, levelDesc, earlyLevel);
+        earlyScreen = LiveHarness::captureScreenStatic;
+        MethodHookRegistry.register(owner, SET_SCREEN, screenDesc, earlyScreen);
+        LOG.info("[harness] early hooks registered at premain: " + listener
+                + "." + HANDLE_LOGIN + loginDesc + ", " + listener + ".tick()V, "
+                + owner + "." + SET_LEVEL + levelDesc);
+        return true;
+    }
+
+    private static volatile Runnable earlyJoin;
+    private static volatile Runnable earlyProbe;
+    private static volatile Runnable earlyLevel;
+    private static volatile Runnable earlyScreen;
+    /** Shared early-registration state for the static callbacks. */
+    private static volatile LiveHarness earlyInstance;
+
+    private static void markJoined(LiveContextTracker tracker, String detail) {
+        LiveHarness instance = earlyInstance;
+        if (instance != null) {
+            instance.onWorldJoined(detail);
+            return;
+        }
+        if (tracker != null) {
+            tracker.transition(LiveContext.Side.CLIENT,
+                    LiveContext.State.IN_WORLD, detail);
+        }
+    }
+
+    private static void markProbe(String owner, String listener) {
+        LiveHarness instance = earlyInstance;
+        if (instance != null) {
+            instance.onProbeFired(listener);
+        }
+    }
+
+    private static void captureScreenStatic() {
+        LiveHarness instance = earlyInstance;
+        if (instance != null) {
+            instance.captureScreen();
+        }
+    }
+
+    /**
+     * Records an observed world join once (idempotent).
+     *
+     * @param detail the diagnostic detail
+     */
+    void onWorldJoined(String detail) {
+        if (worldJoinNanos.compareAndSet(-1, System.nanoTime())) {
+            worldDetail = detail;
+            tracker.transition(LiveContext.Side.CLIENT,
+                    LiveContext.State.IN_WORLD, detail);
+            LOG.info("[harness] world join observed: " + detail);
+            writeReport();
+        }
+    }
+
+    /**
+     * Records the first execution of the dispatch probe.
+     *
+     * @param listenerOwner the probed class name
+     */
+    void onProbeFired(String listenerOwner) {
+        if (tickProbeCount.incrementAndGet() == 1) {
+            LOG.info("[harness] PROBE FIRED: " + listenerOwner
+                    + ".tick is executing injected hooks");
+            synchronized (diagnostics) {
+                diagnostics.add("probe fired: hook dispatch executes in "
+                        + listenerOwner);
+            }
+            writeReport();
+        }
     }
 
     /**

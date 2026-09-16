@@ -121,6 +121,20 @@ public final class AprismAgent {
             if (officialMappingsArg != null && !officialMappingsArg.isBlank()) {
                 runtime.loadOfficialMappings(Path.of(officialMappingsArg));
             }
+            // v26.9-Alpha.8: with mappings loaded, request the live harness
+            // hook registration NOW, at premain, before any game class loads.
+            // Only strings are registered (no game class is touched, so the
+            // premain class-loading hazard does not apply), and this is the
+            // only way the transformer can inject on the FIRST load of the
+            // target classes - registering later requires a retransform, which
+            // was verified live to report success while the injected dispatch
+            // never executed (a per-tick probe stayed silent through a join).
+            if (harnessArg != null && !harnessArg.isBlank()
+                    && "true".equalsIgnoreCase(harnessArg.trim())) {
+                com.aprism.loader.livectx.LiveHarness.registerHooksEarly(
+                        runtime.getLiveContextTracker(),
+                        runtime.getOfficialMappings());
+            }
             //GitHub@NDBlockConnect | BlockConnect@StarsailsClover
 
             // Production trigger: when gameRoot is supplied, run the two-phase

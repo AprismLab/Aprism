@@ -309,6 +309,11 @@ public final class AprismRuntime {
         // annotations declared by loaded mods are applied via the transformer.
         // The bootstrap is fully fault-tolerant: any failure is logged and
         // swallowed so a broken Mixin environment never blocks game startup.
+        // The instrumentation handle must be bound first: the mixin bootstrap
+        // publishes mixin-generated synthetic classes through
+        // appendToSystemClassLoaderSearch (module-safe; reflective defineClass
+        // is blocked by JPMS for java.* packages).
+        AprismMixinBootstrap.setInstrumentation(instrumentation);
         AprismMixinBootstrap.bootstrap(classLoader);
         // v26.2-Alpha.6 hardening: mirror key lifecycle events into the
         // structured facility so the crash report's log tail is actionable.

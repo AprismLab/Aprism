@@ -1,5 +1,6 @@
 package com.aprism.loader;
 
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -361,10 +362,8 @@ public final class AprismMixinBootstrap {
             if (classes == null) {
                 return;
             }
-            ClassLoader systemLoader = ClassLoader.getSystemClassLoader();
-            java.lang.reflect.Method define = ClassLoader.class.getDeclaredMethod(
-                    "defineClass", String.class, byte[].class, int.class, int.class);
-            define.setAccessible(true);
+            // Collect the pending synthetic classes generated for this weave.
+            java.util.Map<String, byte[]> generated = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<?, ?> e : classes.entrySet()) {
                 Object info = e.getValue();
                 String name = syntheticClassName(info);
@@ -375,26 +374,80 @@ public final class AprismMixinBootstrap {
                     continue;
                 }
                 try {
-                    byte[] generated = transformer.transformClassBytes(name, name, null);
-                    if (generated == null || generated.length == 0) {
-                        continue;
-                    }
-                    try {
-                        define.invoke(systemLoader, name, generated, 0, generated.length);
-                        LOG.fine("Defined mixin-generated synthetic class " + name);
-                    } catch (java.lang.reflect.InvocationTargetException dup) {
-                        // already defined elsewhere (e.g. by a prior run of this
-                        // hook in the same weave pass) - not a failure.
+                    // Mixin's supported on-demand path: bytes == null means
+                    // "generate this registered synthetic class".
+                    byte[] bytes = transformer.transformClassBytes(name, name, null);
+                    if (bytes != null && bytes.length > 0) {
+                        generated.put(name, bytes);
                     }
                 } catch (Throwable perClass) {
-                    LOG.warning("Failed to materialize synthetic class " + name
+                    LOG.warning("Failed to generate synthetic class " + name
                             + ": " + perClass);
                 }
             }
+            if (generated.isEmpty()) {
+                return;
+            }
+            appendSyntheticJar(generated);
         } catch (Throwable t) {
             LOG.warning("Synthetic class materialization failed for " + wovenClass
                     + ": " + t);
         }
+    }
+
+    /**
+     * Publishes generated synthetic classes to the system classloader through
+     * the instrumentation search path.
+     *
+     * <p>Why a jar and not {@code ClassLoader.defineClass}: reflective
+     * defineClass on the system loader is blocked by JPMS for many packages
+     * (InaccessibleObjectException: "module java.base does not open
+     * java.lang"), which is exactly what the first implementation hit.
+     * {@link java.lang.instrument.Instrumentation#appendToSystemClassLoaderSearch}
+     * is the supported, module-safe route.
+     *
+     * <p>Why a FRESH jar path per batch: a jar's entries are indexed when its
+     * loader is first consulted, so appending more entries to an
+     * already-indexed jar is invisible. A new file name each time guarantees
+     * a new loader with a complete index.
+     */
+    private static void appendSyntheticJar(java.util.Map<String, byte[]> classes) {
+        if (instrumentation == null) {
+            LOG.warning("No Instrumentation handle; cannot publish "
+                    + classes.size() + " generated synthetic class(es)");
+            return;
+        }
+        try {
+            Path dir = java.nio.file.Files.createTempDirectory("aprism-synthetic");
+            dir.toFile().deleteOnExit();
+            Path jarPath = dir.resolve("synthetic-" + syntheticJarSequence++ + ".jar");
+            try (java.util.jar.JarOutputStream out = new java.util.jar.JarOutputStream(
+                    java.nio.file.Files.newOutputStream(jarPath))) {
+                for (java.util.Map.Entry<String, byte[]> e : classes.entrySet()) {
+                    String entryName = e.getKey().replace('.', '/') + ".class";
+                    out.putNextEntry(new java.util.jar.JarEntry(entryName));
+                    out.write(e.getValue());
+                    out.closeEntry();
+                }
+            }
+            instrumentation.appendToSystemClassLoaderSearch(
+                    new java.util.jar.JarFile(jarPath.toFile()));
+            LOG.fine("Published " + classes.size()
+                    + " mixin-generated synthetic class(es) via " + jarPath.getFileName());
+        } catch (Throwable t) {
+            LOG.warning("Failed to publish generated synthetic classes: " + t);
+        }
+    }
+
+    /** Monotonic suffix so every synthetic jar path is unique. */
+    private static int syntheticJarSequence;
+
+    /** Instrumentation handle for publishing generated classes (may be null). */
+    private static volatile java.lang.instrument.Instrumentation instrumentation;
+
+    /** Binds the instrumentation handle used to publish synthetic classes. */
+    static void setInstrumentation(java.lang.instrument.Instrumentation inst) {
+        instrumentation = inst;
     }
 
     /** Reads MixinTransformer.syntheticClassRegistry via reflection. */
