@@ -106,8 +106,77 @@ public final class AprismClassTransformer implements ClassFileTransformer {
         bytes = applyMixins(className, bytes);
         bytes = applyAccessWideners(className, bytes);
         bytes = applyMethodHooks(className, bytes);
+        // v26.9-Alpha.8 diagnostic: when the harness dump directory is
+        // configured, write the post-transform bytes so we can prove from
+        // outside the game whether the injected dispatch is present in the
+        // class the JVM actually defines. Fail-open (never affects the game).
+        dumpTransformedIfRequested(className, classfileBuffer, bytes,
+                classBeingRedefined != null);
         observeClass(className, bytes);
         return bytes;
+    }
+
+    /**
+     * Writes the pre/post bytes of a transformed harness target class to
+     * {@code <aprism.harness.dump>/}. Diagnostic only: active when the system
+     * property is set and the class is one the live harness hooks, and every
+     * failure is swallowed so the game is never affected (v26.9-Alpha.8).
+     *
+     * @param className the slashed class name
+     * @param before the incoming bytes
+     * @param after the bytes this transformer returns
+     * @param isRetransform whether the JVM is retransforming an existing class
+     */
+    private static void dumpTransformedIfRequested(String className, byte[] before,
+            byte[] after, boolean isRetransform) {
+        String dumpDir = System.getProperty("aprism.harness.dump");
+        if (dumpDir == null || dumpDir.isBlank()) {
+            return;
+        }
+        String hooked = System.getProperty("aprism.harness.dumpClasses", "");
+        if (!hooked.isBlank() && !hooked.contains(className)) {
+            return;
+        }
+        try {
+            java.nio.file.Path dir = java.nio.file.Path.of(dumpDir);
+            java.nio.file.Files.createDirectories(dir);
+            String safe = className.replace('/', '_');
+            String suffix = isRetransform ? "-retransform" : "-load";
+            java.nio.file.Files.write(dir.resolve(safe + suffix + ".before.class"),
+                    before);
+            java.nio.file.Files.write(dir.resolve(safe + suffix + ".after.class"),
+                    after);
+            // v26.9-Alpha.8: record what the TRANSFORMER'S OWN registry view is
+            // for this class. If this is empty while premain registered hooks,
+            // the executing class's MethodHookRegistry is a different static
+            // instance (classloader split) - the leading hypothesis.
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            try {
+                java.lang.reflect.Field hooksField =
+                        com.aprism.loader.lowlevel.MethodHookRegistry.class
+                                .getDeclaredField("HOOKS");
+                hooksField.setAccessible(true);
+                Object map = hooksField.get(null);
+                if (map instanceof java.util.Map<?, ?> hookMap) {
+                    for (Object key : hookMap.keySet()) {
+                        keys.add(String.valueOf(key));
+                    }
+                }
+            } catch (Throwable reflectionFailure) {
+                keys.add("registry introspection failed: " + reflectionFailure);
+            }
+            java.nio.file.Files.writeString(dir.resolve(safe + suffix + ".txt"),
+                    "before=" + before.length + " after=" + after.length
+                            + " changed=" + (before.length != after.length
+                                    || !java.util.Arrays.equals(before, after))
+                            + " retransform=" + isRetransform
+                            + " loader=" + AprismClassTransformer.class.getClassLoader()
+                            + " registrySize=" + keys.size()
+                            + " registryKeys=" + keys
+                            + System.lineSeparator());
+        } catch (Throwable ignored) {
+            // diagnostic only
+        }
     }
 
     /**
@@ -232,7 +301,10 @@ public final class AprismClassTransformer implements ClassFileTransformer {
      * @return the (possibly rewritten) bytecode
      */
     private byte[] applyMethodHooks(String className, byte[] bytes) {
-        if (!MethodHookRegistry.hasAnyHookForClass(className)) {
+        boolean anyHook = MethodHookRegistry.hasAnyHookForClass(className);
+        noteHookTrace(className, "applyMethodHooks entry: anyHook=" + anyHook
+                + " bytes=" + (bytes == null ? "null" : bytes.length));
+        if (!anyHook) {
             return bytes;
         }
         try {
@@ -246,11 +318,63 @@ public final class AprismClassTransformer implements ClassFileTransformer {
             MethodHookTransformer transformer =
                     new MethodHookTransformer(Opcodes.ASM9, writer, className);
             reader.accept(transformer, 0);
-            return writer.toByteArray();
+            byte[] out = writer.toByteArray();
+            noteHookTrace(className, "hook pass produced " + out.length + " bytes");
+            return out;
         } catch (Exception e) {
+            // Never fail the game, but do not swallow silently: a failed hook
+            // pass is a real defect and must be visible (v26.9-Alpha.8 - this
+            // catch previously hid the reason hooks never fired).
+            reportHookFailure(className, e);
             return bytes;
         }
     }
+
+    /** Records a hook-injection diagnostic line (harness dump only). */
+    private static void noteHookTrace(String className, String message) {
+        try {
+            String dumpDir = System.getProperty("aprism.harness.dump");
+            if (dumpDir == null || dumpDir.isBlank()) {
+                return;
+            }
+            String hooked = System.getProperty("aprism.harness.dumpClasses", "");
+            if (!hooked.isBlank() && !hooked.contains(className)) {
+                return;
+            }
+            java.nio.file.Path dir = java.nio.file.Path.of(dumpDir);
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Files.writeString(
+                    dir.resolve(className.replace('/', '_') + "-hooktrace.txt"),
+                    message + System.lineSeparator(),
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+        } catch (Throwable ignored) {
+            // diagnostic only
+        }
+    }
+
+    /** Records a hook-injection failure without disturbing the game. */
+    private static void reportHookFailure(String className, Throwable failure) {
+        try {
+            String dumpDir = System.getProperty("aprism.harness.dump");
+            if (dumpDir != null && !dumpDir.isBlank()) {
+                java.nio.file.Path dir = java.nio.file.Path.of(dumpDir);
+                java.nio.file.Files.createDirectories(dir);
+                java.nio.file.Files.writeString(
+                        dir.resolve(className.replace('/', '_') + "-hookerror.txt"),
+                        failure.toString() + System.lineSeparator()
+                                + java.util.Arrays.toString(
+                                        failure.getStackTrace()));
+            }
+        } catch (Throwable ignored) {
+            // diagnostic only
+        }
+        HOOK_FAILURE_LOG.warning(() -> "method-hook injection failed for "
+                + className + ": " + failure);
+    }
+
+    private static final java.util.logging.Logger HOOK_FAILURE_LOG =
+            java.util.logging.Logger.getLogger("aprism.hooks");
 
     /**
      * ASM {@link ClassVisitor} that applies access widener rules to the

@@ -277,22 +277,48 @@ public final class LiveHarness {
                 : mappings.runtimeDescriptor(SET_LEVEL_DESC);
         String screenDesc = mappings == null ? SET_SCREEN_DESC
                 : mappings.runtimeDescriptor(SET_SCREEN_DESC);
+        // CRITICAL: the hook key is matched against the CLASS-FILE method name,
+        // so the method name must be mapping-translated exactly like the class
+        // name and descriptor. Registering the official name (e.g.
+        // "handleLogin") on an obfuscated runtime never matches the real name
+        // ("a"), which is why the transformer saw the hook yet produced
+        // unchanged bytes (v26.9-Alpha.8 root cause, found by dumping the
+        // post-transform bytes).
+        String loginMethod = runtimeMethodName(mappings, PACKET_LISTENER_CLASS,
+                HANDLE_LOGIN);
+        String tickMethod = runtimeMethodName(mappings, PACKET_LISTENER_CLASS, "tick");
+        String levelMethod = runtimeMethodName(mappings, CLIENT_CLASS, SET_LEVEL);
+        String screenMethod = runtimeMethodName(mappings, CLIENT_CLASS, SET_SCREEN);
         LiveContextTracker tracker = earlyTracker;
 
         earlyJoin = () -> markJoined(tracker,
                 "handleLogin observed on " + listener);
-        MethodHookRegistry.register(listener, HANDLE_LOGIN, loginDesc,
+        MethodHookRegistry.register(listener, loginMethod, loginDesc,
                 earlyJoin);
         earlyProbe = () -> markProbe(owner, listener);
-        MethodHookRegistry.register(listener, "tick", "()V", earlyProbe);
+        MethodHookRegistry.register(listener, tickMethod, "()V", earlyProbe);
         earlyLevel = () -> markJoined(tracker, "setLevel observed on " + owner);
-        MethodHookRegistry.register(owner, SET_LEVEL, levelDesc, earlyLevel);
+        MethodHookRegistry.register(owner, levelMethod, levelDesc, earlyLevel);
         earlyScreen = LiveHarness::captureScreenStatic;
-        MethodHookRegistry.register(owner, SET_SCREEN, screenDesc, earlyScreen);
+        MethodHookRegistry.register(owner, screenMethod, screenDesc, earlyScreen);
         LOG.info("[harness] early hooks registered at premain: " + listener
-                + "." + HANDLE_LOGIN + loginDesc + ", " + listener + ".tick()V, "
-                + owner + "." + SET_LEVEL + levelDesc);
+                + "." + loginMethod + loginDesc + ", " + listener + "."
+                + tickMethod + "()V, " + owner + "." + levelMethod + levelDesc);
         return true;
+    }
+
+    /**
+     * Translates an official method name to its runtime name for hook keys.
+     *
+     * @param mappings the loaded mappings (null on NO_REMAP)
+     * @param officialClass the official owner class name
+     * @param officialMethod the official method name
+     * @return the runtime method name
+     */
+    private static String runtimeMethodName(OfficialMappings mappings,
+            String officialClass, String officialMethod) {
+        return mappings == null ? officialMethod
+                : mappings.runtimeMethodName(officialClass, officialMethod);
     }
 
     private static volatile Runnable earlyJoin;
@@ -370,6 +396,9 @@ public final class LiveHarness {
      * @param loginDesc the resolved handleLogin descriptor
      */
     private void installJoinViaGameEvents(String listenerOwner, String loginDesc) {
+        // The hook key must use the RUNTIME method name (see applyEarlyRegistration).
+        String loginMethodName = earlyMappings == null ? HANDLE_LOGIN
+                : earlyMappings.runtimeMethodName(PACKET_LISTENER_CLASS, HANDLE_LOGIN);
         try {
             com.aprism.loader.AprismRuntime runtime =
                     com.aprism.loader.AprismRuntime.instance();
@@ -395,7 +424,7 @@ public final class LiveHarness {
                         }
                     });
             installer.install(new com.aprism.loader.gameevent.GameEventHookInstaller.HookTarget(
-                    listenerOwner, HANDLE_LOGIN, loginDesc,
+                    listenerOwner, loginMethodName, loginDesc,
                     com.aprism.loader.gameevent.GameEventHookInstaller.EventType.WORLD_LOAD));
             LOG.info("[harness] registered WORLD_LOAD hook via game-event installer: "
                     + listenerOwner + "." + HANDLE_LOGIN + loginDesc);

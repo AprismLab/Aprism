@@ -58,6 +58,55 @@ class LiveHarnessTest {
     }
 
     @Test
+    void earlyRegistrationUsesTranslatedMethodNames() throws Exception {
+        // Regression anchor (v26.9-Alpha.8): the hook KEY must carry the
+        // RUNTIME method name. Registering the official name on an obfuscated
+        // runtime never matches the real class-file method name, so the
+        // transformer saw the hook yet emitted unchanged bytes - silently, for
+        // a long time. Verified live on 1.21.4 where handleLogin is "a" and
+        // tick is "d" inside the runtime class ggb.
+        Path clientTxt = tempDir.resolve("client.txt");
+        Files.writeString(clientTxt, """
+                net.minecraft.client.Minecraft -> flk:
+                    void setLevel(net.minecraft.client.multiplayer.ClientLevel) -> a
+                    void setScreen(net.minecraft.client.gui.screens.Screen) -> a
+                net.minecraft.client.multiplayer.ClientLevel -> gga:
+                net.minecraft.client.gui.screens.Screen -> fum:
+                net.minecraft.client.multiplayer.ClientPacketListener -> ggb:
+                    void handleLogin(net.minecraft.network.protocol.game.ClientboundLoginPacket) -> a
+                    void tick() -> d
+                net.minecraft.network.protocol.game.ClientboundLoginPacket -> add:
+                """);
+        com.aprism.loader.contentbind.OfficialMappings mappings =
+                com.aprism.loader.contentbind.OfficialMappings.load(clientTxt);
+        assertNotNull(mappings);
+
+        com.aprism.loader.lowlevel.MethodHookRegistry.clear();
+        LiveContextTracker tracker = new LiveContextTracker();
+        LiveHarness.registerHooksEarly(tracker, mappings);
+        assertTrue(LiveHarness.applyEarlyRegistration());
+
+        // The registry must hold RUNTIME-named keys, never the official names.
+        java.lang.reflect.Field hooksField =
+                com.aprism.loader.lowlevel.MethodHookRegistry.class
+                        .getDeclaredField("HOOKS");
+        hooksField.setAccessible(true);
+        java.util.Map<?, ?> hooks = (java.util.Map<?, ?>) hooksField.get(null);
+        java.util.List<String> keys = hooks.keySet().stream()
+                .map(String::valueOf).sorted().toList();
+
+        assertTrue(keys.contains("ggb.a(Ladd;)V"),
+                "handleLogin must be registered under its runtime name: " + keys);
+        assertTrue(keys.contains("ggb.d()V"),
+                "tick must be registered under its runtime name: " + keys);
+        assertFalse(keys.stream().anyMatch(k -> k.contains("handleLogin")),
+                "official method names must never appear in hook keys: " + keys);
+        assertFalse(keys.stream().anyMatch(k -> k.startsWith("ggb.tick")),
+                "official tick name must not be used: " + keys);
+        com.aprism.loader.lowlevel.MethodHookRegistry.clear();
+    }
+
+    @Test
     void uninstallIsSafeWhenNothingInstalled() {
         LiveHarness harness = new LiveHarness(new LiveContextTracker(), tempDir);
         assertDoesNotThrow(harness::uninstall);
