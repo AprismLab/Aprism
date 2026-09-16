@@ -98,6 +98,9 @@ public final class LiveHarness {
     /** Resolved (translated) runtime names, kept for diagnostics context. */
     private volatile String resolvedLevelType;
     private volatile String resolvedScreenType;
+    /** Probe-hook invocation counter (join-observation investigation). */
+    private final java.util.concurrent.atomic.AtomicLong tickProbeCount =
+            new java.util.concurrent.atomic.AtomicLong();
 
     /**
      * Installs the live hooks with no mapping translation (NO_REMAP profile,
@@ -144,16 +147,25 @@ public final class LiveHarness {
                 writeReport();
             }
         });
-        // Primary join signal: ClientPacketListener.handleLogin, which 1.21.4
-        // (and every modern version) really invokes once per world join.
+        // Primary join signal: routed through the RUNTIME's own game-event
+        // installer so registration, dispatcher attachment and retransform are
+        // owned by the production path (v26.9-Alpha.8). The runtime exposes the
+        // WORLD_LOAD event type; we subscribe to the bus it publishes on.
         String listenerOwner = translateClass(mappings, PACKET_LISTENER_CLASS);
         String loginDesc = translateDescriptor(mappings, HANDLE_LOGIN_DESC);
-        installHook(listenerOwner, HANDLE_LOGIN, loginDesc, "world-join(login)", () -> {
-            if (worldJoinNanos.compareAndSet(-1, System.nanoTime())) {
-                worldDetail = "handleLogin observed on " + listenerOwner;
-                tracker.transition(LiveContext.Side.CLIENT,
-                        LiveContext.State.IN_WORLD, worldDetail);
-                LOG.info("[harness] world join observed via handleLogin");
+        installJoinViaGameEvents(listenerOwner, loginDesc);
+        // Probe hook: ClientPacketListener.tick runs on EVERY client tick, so
+        // firing proves the injected dispatch executes in the loaded class;
+        // silence means the injection never landed in the executed bytes
+        // (class-loading-context mismatch) - the decisive discriminator for
+        // the open join-observation investigation (v26.9-Alpha.8).
+        String tickOwner = listenerOwner;
+        installHook(tickOwner, "tick", "()V", "probe(tick)", () -> {
+            if (tickProbeCount.incrementAndGet() == 1) {
+                LOG.info("[harness] PROBE FIRED: " + tickOwner
+                        + ".tick is executing injected hooks");
+                diagnostics.add("probe fired: hook dispatch executes in "
+                        + tickOwner);
                 writeReport();
             }
         });
@@ -175,6 +187,51 @@ public final class LiveHarness {
         // stay; field-based observation needs a safe mechanism and is tracked
         // as follow-up work.
         writeReport();
+    }
+
+    /**
+     * Registers the join hook through the runtime's game-event installer and
+     * subscribes to the resulting world-load event (v26.9-Alpha.8). This uses
+     * the production hook path rather than the raw registry so the runtime
+     * owns dispatcher attachment and event delivery.
+     *
+     * @param listenerOwner the resolved ClientPacketListener class name
+     * @param loginDesc the resolved handleLogin descriptor
+     */
+    private void installJoinViaGameEvents(String listenerOwner, String loginDesc) {
+        try {
+            com.aprism.loader.AprismRuntime runtime =
+                    com.aprism.loader.AprismRuntime.instance();
+            com.aprism.loader.gameevent.GameEventDispatcher dispatcher =
+                    runtime.getGameEventDispatcher();
+            com.aprism.loader.gameevent.GameEventHookInstaller installer =
+                    runtime.getGameEventHookInstaller();
+            if (dispatcher == null || installer == null) {
+                diagnostics.add("game-event installer unavailable");
+                return;
+            }
+            dispatcher.setAttached(true);
+            runtime.getEventBus().register(
+                    com.aprism.api.gameevent.WorldLoadEvent.class,
+                    event -> {
+                        if (worldJoinNanos.compareAndSet(-1, System.nanoTime())) {
+                            worldDetail = "WorldLoadEvent via " + listenerOwner
+                                    + " (worldId=" + event.getWorldId() + ")";
+                            tracker.transition(LiveContext.Side.CLIENT,
+                                    LiveContext.State.IN_WORLD, worldDetail);
+                            LOG.info("[harness] world join observed via game events");
+                            writeReport();
+                        }
+                    });
+            installer.install(new com.aprism.loader.gameevent.GameEventHookInstaller.HookTarget(
+                    listenerOwner, HANDLE_LOGIN, loginDesc,
+                    com.aprism.loader.gameevent.GameEventHookInstaller.EventType.WORLD_LOAD));
+            LOG.info("[harness] registered WORLD_LOAD hook via game-event installer: "
+                    + listenerOwner + "." + HANDLE_LOGIN + loginDesc);
+        } catch (Throwable failure) {
+            diagnostics.add("game-event join wiring failed: " + failure);
+            LOG.warning("[harness] game-event join wiring failed: " + failure);
+        }
     }
 
     /**
