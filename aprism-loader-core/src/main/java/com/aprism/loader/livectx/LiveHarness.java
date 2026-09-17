@@ -127,6 +127,14 @@ public final class LiveHarness {
      */
     public void install(OfficialMappings mappings) {
         earlyInstance = this;
+        // Merge screens captured by the static path before this instance
+        // existed (v26.9-Alpha.8).
+        for (String early : earlyScreens) {
+            if (early != null && !screens.contains(early)) {
+                screens.add(early);
+            }
+        }
+        earlyScreens.clear();
         // Premain-registered hooks (if requested) are applied now so the
         // transformer injects on first load; the deferred-time registration
         // below then only adds the game-event routed path.
@@ -269,6 +277,12 @@ public final class LiveHarness {
         OfficialMappings mappings = earlyMappings;
         String owner = (mappings == null ? CLIENT_CLASS
                 : mappings.runtimeName(CLIENT_CLASS)).replace('.', '/');
+        // The screen hook can fire from Minecraft's static init / first screen
+        // long before the deferred install() runs, so the resolved client class
+        // must be available to the static capture path from this moment
+        // (v26.9-Alpha.8: removes the "client class not resolved yet"
+        // diagnostics).
+        resolvedClientClassStatic = owner;
         String listener = (mappings == null ? PACKET_LISTENER_CLASS
                 : mappings.runtimeName(PACKET_LISTENER_CLASS)).replace('.', '/');
         String loginDesc = mappings == null ? HANDLE_LOGIN_DESC
@@ -351,8 +365,72 @@ public final class LiveHarness {
         LiveHarness instance = earlyInstance;
         if (instance != null) {
             instance.captureScreen();
+            return;
+        }
+        // No deferred instance yet: record via the early-report hook so an
+        // early screen observation is still captured (v26.9-Alpha.8).
+        earlyScreens.add(describeScreenStatic());
+    }
+
+    /**
+     * Best-effort static screen description used before the deferred instance
+     * exists: resolves the client via the premain-resolved class name.
+     *
+     * @return a screen description, or null when unavailable
+     */
+    private static String describeScreenStatic() {
+        String owner = resolvedClientClassStatic;
+        if (owner == null) {
+            return null;
+        }
+        try {
+            Class<?> clientClass = Class.forName(owner.replace('/', '.'));
+            // Same shape-based singleton resolution as clientInstance(): the
+            // obfuscated client has no getInstance() method.
+            Object client = null;
+            for (Method candidate : clientClass.getMethods()) {
+                if (java.lang.reflect.Modifier.isStatic(candidate.getModifiers())
+                        && candidate.getParameterCount() == 0
+                        && candidate.getReturnType() == clientClass) {
+                    client = candidate.invoke(null);
+                    break;
+                }
+            }
+            if (client == null) {
+                for (java.lang.reflect.Field field : clientClass.getFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                            && field.getType() == clientClass) {
+                        client = field.get(null);
+                        break;
+                    }
+                }
+            }
+            if (client == null) {
+                return null;
+            }
+            java.lang.reflect.Method getScreen = null;
+            for (java.lang.reflect.Method m : clientClass.getMethods()) {
+                if (m.getParameterCount() == 0
+                        && m.getReturnType().getName().endsWith("Screen")) {
+                    getScreen = m;
+                    break;
+                }
+            }
+            if (getScreen == null) {
+                return null;
+            }
+            Object screen = getScreen.invoke(client);
+            return screen == null ? "<no screen>" : screen.getClass().getName();
+        } catch (Throwable ignored) {
+            return null;
         }
     }
+
+    /** Early-captured screen descriptions (merged into the instance later). */
+    private static final java.util.List<String> earlyScreens =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** The premain-resolved client class name for the static capture path. */
+    private static volatile String resolvedClientClassStatic;
 
     /**
      * Records an observed world join once (idempotent).
@@ -520,13 +598,17 @@ public final class LiveHarness {
             if (client == null) {
                 return;
             }
-            Method getScreen = findNoArg(client.getClass(), "getScreen", "screen");
-            if (getScreen == null) {
-                diagnostics.add("screen accessor not found on "
-                        + client.getClass().getName());
-                return;
+            // v26.9-Alpha.8: obfuscated clients expose the screen via a method
+            // whose RETURN TYPE is the Screen class (or via the public screen
+            // field) - not via a readable name like getScreen(). Resolve by
+            // shape, matching the translated Screen type when known.
+            Method getScreen = findScreenAccessor(client.getClass());
+            Object screen = null;
+            if (getScreen != null) {
+                screen = getScreen.invoke(client);
+            } else {
+                screen = firstNonNullFieldValue(client, "screen");
             }
-            Object screen = getScreen.invoke(client);
             String entry = screen == null ? "<null>"
                     : describeScreen(screen);
             synchronized (screens) {
@@ -571,13 +653,33 @@ public final class LiveHarness {
     private Object clientInstance() {
         String owner = resolvedClientClass;
         if (owner == null) {
+            owner = resolvedClientClassStatic;
+        }
+        if (owner == null) {
             diagnostics.add("client class not resolved yet (harness not installed)");
             return null;
         }
         try {
             Class<?> clientClass = Class.forName(owner.replace('/', '.'));
-            Method getInstance = clientClass.getMethod("getInstance");
-            return getInstance.invoke(null);
+            // v26.9-Alpha.8: modern obfuscated clients have NO getInstance()
+            // method (javap on 1.21.4 shows only a static field "static flk F"),
+            // so resolve the singleton by SHAPE: first a no-arg static method
+            // returning the client type, then a static field of that type.
+            for (Method candidate : clientClass.getMethods()) {
+                if (java.lang.reflect.Modifier.isStatic(candidate.getModifiers())
+                        && candidate.getParameterCount() == 0
+                        && candidate.getReturnType() == clientClass) {
+                    return candidate.invoke(null);
+                }
+            }
+            for (java.lang.reflect.Field field : clientClass.getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                        && field.getType() == clientClass) {
+                    return field.get(null);
+                }
+            }
+            diagnostics.add("client singleton not found on " + owner);
+            return null;
         } catch (Throwable t) {
             diagnostics.add("client instance unavailable: " + t);
             return null;
@@ -591,6 +693,88 @@ public final class LiveHarness {
 
     private String translateDescriptor(OfficialMappings mappings, String descriptor) {
         return mappings == null ? descriptor : mappings.runtimeDescriptor(descriptor);
+    }
+
+    /**
+     * Reads the first non-null instance field of the target whose declared
+     * type matches the requested kind (v26.9-Alpha.8). Currently used for the
+     * screen fallback: on obfuscated runtimes the screen lives in a public
+     * field typed {@code fum} (the translated Screen), so matching runs against
+     * the translated type name and readable suffixes.
+     *
+     * @param target the client instance
+     * @param names the requested kinds ({@code screen})
+     * @return the value, or null when nothing matches
+     */
+    private Object firstNonNullFieldValue(Object target, String... names) {
+        Class<?> type = target.getClass();
+        while (type != null && type != Object.class) {
+            for (java.lang.reflect.Field field : type.getDeclaredFields()) {
+                for (String name : names) {
+                    if (!"screen".equals(name)
+                            || !matchesScreenShape(field.getType().getName())) {
+                        continue;
+                    }
+                    try {
+                        field.setAccessible(true);
+                        Object value = field.get(target);
+                        if (value != null) {
+                            return value;
+                        }
+                    } catch (Throwable ignored) {
+                        // not accessible: keep looking
+                    }
+                }
+            }
+            type = type.getSuperclass();
+        }
+        return null;
+    }
+
+    /**
+     * @param typeName the declared field type name
+     * @return true when the type is the translated Screen type or a readable
+     *         Screen type
+     */
+    private boolean matchesScreenShape(String typeName) {
+        String screenType = resolvedScreenType;
+        if (screenType != null
+                && (typeName.equals(screenType)
+                    || typeName.equals(screenType.replace('/', '.')))) {
+            return true;
+        }
+        return typeName.endsWith("Screen") || typeName.contains("gui.screens");
+    }
+
+    /**
+     * Finds a no-arg instance method on the client whose return type is the
+     * Screen class (v26.9-Alpha.8). Obfuscated runtimes give the accessor an
+     * opaque name, so the shape is the only stable signal; on a readable
+     * runtime the getScreen-style method also matches by return type.
+     *
+     * @param clientClass the client class
+     * @return the accessor, or null when none matches
+     */
+    private Method findScreenAccessor(Class<?> clientClass) {
+        String screenType = resolvedScreenType;
+        for (Method method : clientClass.getMethods()) {
+            if (method.getParameterCount() != 0
+                    || java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                continue;
+            }
+            Class<?> returnType = method.getReturnType();
+            String returnName = returnType.getName();
+            if (screenType != null
+                    && (returnName.equals(screenType)
+                        || returnName.equals(screenType.replace('/', '.')))) {
+                return method;
+            }
+            if (returnName.endsWith("Screen")
+                    || returnName.contains("gui.screens")) {
+                return method;
+            }
+        }
+        return null;
     }
 
     private static Method findNoArg(Class<?> type, String preferred, String fallbackFragment) {
